@@ -76,22 +76,36 @@ PromptInput(ncpp::NotCurses &ncurses, std::shared_ptr<ncpp::Plane> plane)
 		else if (ni.id == NCKEY_LEFT)
 		{
 			if (bpos > 0)
+			{
+				if (!(bpos % line_size))
+					y--;
 				bpos--;
+			}
 		}
 		else if (ni.id == NCKEY_RIGHT)
 		{
 			if (bpos < buf.size())
+			{
 				bpos++;
+				if (!(bpos % line_size))
+					y++;
+			}
 		}
 		else if (ni.id == NCKEY_UP)
 		{
-			if (bpos > line_size)
+			if (bpos >= line_size)
+			{
 				bpos -= line_size;
+				y--;
+			}
 		}
 		else if (ni.id == NCKEY_DOWN)
 		{
 			if (bpos + line_size < buf.size())
+			{
 				bpos += line_size;
+				y++;
+			}
 		}
 
 		else if (nckey_synthesized_p(ni.id))
@@ -105,13 +119,14 @@ PromptInput(ncpp::NotCurses &ncurses, std::shared_ptr<ncpp::Plane> plane)
 		}
 
 		const uint cxpos{static_cast<uint>(bpos % line_size)};
+		/* const uint num_lines{static_cast<uint>((buf.size() - 1) /
+		 * line_size)}; */
 		const uint cypos{static_cast<uint>(bpos / (line_size))};
 		plane->erase();
 		plane->printf(y - cypos, 0, "> ");
-		// Messy logic stuff so we can fill in the line
-		// TODO: refactor this
 
-		PrintInput(plane, buf, 2);
+		PrintInput(plane, buf, buf_indent);
+		/* plane->cursor_move(y, buf_indent + cxpos); */
 		ncurses.cursor_enable(y, buf_indent + cxpos);
 		ncurses.render();
 	}

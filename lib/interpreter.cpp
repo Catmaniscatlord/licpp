@@ -142,7 +142,9 @@ value_t eval(value_t& value, value_t& env)
 value_t apply(const value_t& f, value_t& args, value_t& env)
 {
 	if (f.pname == "car")
-		return *args.car();
+		return *args.car()->car();
+	if (f.pname == "cdr")
+		return *args.cdr().car();
 	auto L = eval(f, env);
 	if (f.car()->pname == "closure")
 	{

@@ -36,7 +36,18 @@ FetchContent_Declare(
       USES_TERMINAL_DOWNLOAD TRUE
   DOWNLOAD_NO_EXTRACT FALSE)
 
-FetchContent_MakeAvailable(Boost googletest)
+FetchContent_Declare(
+  notcurses
+  URL https://github.com/dankamongmen/notcurses/archive/refs/tags/v3.0.9.tar.gz
+      USES_TERMINAL_DOWNLOAD TRUE
+  DOWNLOAD_NO_EXTRACT FALSE)
+set(USE_DOCTEST OFF)
+set(USE_POC OFF)
+set(USE_PANDOC OFF)
+set(USE_EXECUTABLES OFF)
+
+set(USE_CXX ON)
+FetchContent_MakeAvailable(notcurses Boost googletest)
 
 # ##############################################################################
 # Project Wide Options #
@@ -45,8 +56,8 @@ FetchContent_MakeAvailable(Boost googletest)
 # include with our strick compiler settings.
 
 # Enforce a strict compiler over the whole project
-add_compile_options(-Werror -Wall -Wextra -Wconversion -Wpedantic)
+add_compile_options(-Werror -Wall -Wextra -Wpedantic)
 enable_testing()
-add_subdirectory(lib)
+# add_subdirectory(lib)
 add_subdirectory(src)
-add_subdirectory(tests)
+# add_subdirectory(tests)

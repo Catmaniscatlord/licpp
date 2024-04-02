@@ -5,7 +5,7 @@
 #include <iterator>
 #include <ranges>
 #include <variant>
-
+/*
 value_t value_t::cdr()
 {
 	assert(std::holds_alternative<List>(apval));
@@ -150,9 +150,9 @@ value_t apply(const value_t& f, value_t& args, value_t& env)
 	{
 		List LE;
 		value_t tmp;
-		for (std::pair<value_t&, value_t&> i :
-			 std::views::zip(std::get<List>(L.cdr().car()->cdr().car()->apval),
-							 std::get<List>(args.apval)))
+		for (std::pair<value_t&, value_t&> i : std::ranges::views::zip(
+				 std::get<List>(L.cdr().car()->cdr().car()->apval),
+				 std::get<List>(args.apval)))
 		{
 			tmp.type = VALUE_TYPE::SYMBOL;
 			tmp.pname = i.first.pname;
@@ -167,7 +167,7 @@ value_t apply(const value_t& f, value_t& args, value_t& env)
 
 	List LE;
 	value_t tmp;
-	for (std::pair<value_t&, value_t&> i : std::views::zip(
+	for (std::pair<value_t&, value_t&> i : std::ranges::views::zip(
 			 std::get<List>(L.cdr().car()->apval), std::get<List>(args.apval)))
 	{
 		tmp.type = VALUE_TYPE::SYMBOL;
@@ -181,3 +181,5 @@ value_t apply(const value_t& f, value_t& args, value_t& env)
 
 	return eval(*L.cdr().car()->cdr().cdr().car(), copy);
 };
+
+*/

@@ -1,18 +1,21 @@
 #include <uchar.h>
 
 #include <cstring>
+#include <format>
 #include <iostream>
 #include <memory>
 #include <ncpp/Direct.hh>
 #include <ncpp/NotCurses.hh>
-#include <ranges>
 #include <string_view>
+
+#include "parser.hpp"
 
 std::wstring
 PromptInput(ncpp::NotCurses &ncurses, std::shared_ptr<ncpp::Plane> plane);
 
-void PrintInput(
-	std::shared_ptr<ncpp::Plane> plane, std::wstring_view buf, uint indent);
+void PrintInput(std::shared_ptr<ncpp::Plane> plane,
+				std::vector<token_t> input,
+				const uint indent);
 
 int main(void)
 {
@@ -107,7 +110,13 @@ PromptInput(ncpp::NotCurses &ncurses, std::shared_ptr<ncpp::Plane> plane)
 				y++;
 			}
 		}
-
+		// Ignore Tabs for now
+		// TODO: add tab support
+		// note: thise will require rewritting the cursors positioning code.
+		else if (ni.id == NCKEY_TAB)
+		{
+			continue;
+		}
 		else if (nckey_synthesized_p(ni.id))
 		{
 			continue;
@@ -124,8 +133,9 @@ PromptInput(ncpp::NotCurses &ncurses, std::shared_ptr<ncpp::Plane> plane)
 		const uint cypos{static_cast<uint>(bpos / (line_size))};
 		plane->erase();
 		plane->printf(y - cypos, 0, "> ");
+		auto tokens = ParseTokens(buf);
 
-		PrintInput(plane, buf, buf_indent);
+		PrintInput(plane, tokens.first, buf_indent);
 		/* plane->cursor_move(y, buf_indent + cxpos); */
 		ncurses.cursor_enable(y, buf_indent + cxpos);
 		ncurses.render();
@@ -134,7 +144,7 @@ PromptInput(ncpp::NotCurses &ncurses, std::shared_ptr<ncpp::Plane> plane)
 }
 
 void PrintInput(std::shared_ptr<ncpp::Plane> plane,
-				std::wstring_view input,
+				std::vector<token_t> input,
 				const uint indent)
 {
 	uint x, y;
@@ -143,61 +153,27 @@ void PrintInput(std::shared_ptr<ncpp::Plane> plane,
 	const uint dimx{plane->get_dim_x()};
 	const uint line_size{dimx - indent};
 
-	auto get_token = [&]() -> std::wstring_view
-	{
-		std::wstring_view ret;
-
-		if (input.empty())
-			return ret;
-
-		// take delimeter
-		// '(', ')', ''', or ' '
-		if (input.starts_with(L'(') || input.starts_with(L')') ||
-			input.starts_with(L' ') || input.starts_with(L'\''))
-		{
-			ret = input | std::ranges::views::take(1);
-			input.remove_prefix(1);
-			return ret;
-		}
-		// take up to delimeter
-		else
-		{
-			auto n = input.find_first_of(L"()\' ");
-			if (n == input.npos)
-			{
-				// No more delimiting characters found
-				ret = input;
-				input.remove_prefix(input.size());
-			}
-			else
-			{
-				ret = input | std::ranges::views::take(n);
-				input.remove_prefix(n);
-			}
-		}
-
-		return ret;
-	};
-
 	// begin index
 	uint bi{0};
-	auto token{get_token()};
-	const static auto kQUOTE_COLOR = 0xC35817u;
-	const static std::array kPARA_COLORS = {0xEF476Fu, 0xFFD166u, 0x06D6A0u,
-											0X118AB2u, 0X073B4Cu};
+	const static auto kQUOTE_COLOR = 0x2AC3DEu;
+	const static std::array kPARA_COLORS = {0x698CD6u, 0x68B3DEu, 0x9A7ECCu,
+											0x25AAC2u, 0x80A856u, 0xCFA25Fu};
 	// number of unmatched paranthesis positive is unmatched left negative is
 	// unmatched right
 	int para_count{0};
-	while (!token.empty())
+	for (token_t &tok : input)
 	{
-		if (token == L"(")
+		auto str = tok.pname;
+		/* std::wcerr << str; */
+		/* continue; */
+		if (str == L"(")
 		{
 			if (para_count >= 0)
 				plane->set_fg_rgb(
 					kPARA_COLORS[para_count % kPARA_COLORS.size()]);
 			para_count++;
 		}
-		else if (token == L")")
+		else if (str == L")")
 		{
 			if (para_count > 0)
 			{
@@ -206,36 +182,25 @@ void PrintInput(std::shared_ptr<ncpp::Plane> plane,
 					kPARA_COLORS[para_count % kPARA_COLORS.size()]);
 			}
 		}
-		else if (token == L"\'")
+		else if (str == L"\'")
 			plane->set_fg_rgb(kQUOTE_COLOR);
 
 		// Print the token
 		// line overflow
-		if (bi + token.size() >= line_size)
+		while (bi + str.size() >= line_size)
 		{
-			while (bi + token.size() >= line_size)
-			{
-				// first part of token
-				plane->printf(y, indent + bi, "%.*ls",
-							  static_cast<int>(line_size - bi), token.data());
-				y++;
-				token.remove_prefix(line_size - bi);
-				bi = 0;
-			}
-			// second part of token
-			plane->printf(y, indent, "%.*ls", static_cast<int>(token.size()),
-						  token.data());
-			bi += token.size();
-		}
-		else
-		{
-			plane->printf(y, indent + bi, "%.*ls",
-						  static_cast<int>(token.size()), token.data());
-			bi += token.size();
+			// first part of token
+			plane->putstr(
+				y, indent + bi,
+				std::format(L"{}", str.substr(0, line_size - bi)).c_str());
+			y++;
+			str.remove_prefix(line_size - bi);
+			bi = 0;
 		}
 
-		// Next token
-		token = get_token();
+		plane->putstr(y, indent + bi, std::format(L"{}", str).c_str());
+		bi += str.size();
+
 		plane->set_fg_default();
 	}
 }

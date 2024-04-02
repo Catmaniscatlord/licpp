@@ -58,6 +58,6 @@ FetchContent_MakeAvailable(notcurses Boost googletest)
 # Enforce a strict compiler over the whole project
 add_compile_options(-Werror -Wall -Wextra -Wpedantic)
 enable_testing()
-# add_subdirectory(lib)
+add_subdirectory(lib)
 add_subdirectory(src)
 # add_subdirectory(tests)

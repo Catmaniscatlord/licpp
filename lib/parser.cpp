@@ -1,8 +1,10 @@
 #include "parser.hpp"
 
+#include <cstddef>
 #include <ranges>
 #include <stack>
 #include <string_view>
+#include <vector>
 
 #include "structs.hpp"
 
@@ -14,9 +16,13 @@ ParseTokens(std::wstring_view input)
 	uint input_pos{};
 	ParserError err{};
 	std::vector<token_t> tokens;
-	// Push list tokens on to the stack when opened, then pop when we find the
-	// corresponding )
-	std::stack<std::pair<token_t&, std::vector<token_t>::iterator>> list_stack;
+	// Store a stack containing the position in the array to the list token, and
+	// the first token in the list
+	std::stack<std::pair<size_t, size_t>> list_stack;
+	// This stores all List tokens, with the position of the beginning and the
+	// end of their lists
+	std::vector<std::tuple<size_t, size_t, size_t>> lists;
+
 	bool quoted;
 
 	while (!input.empty())
@@ -60,19 +66,22 @@ ParseTokens(std::wstring_view input)
 			// (
 			if (input.starts_with(L"("))
 			{
+				// Start the list
+				tokens.emplace_back(token_t{
+					.quoted = quoted,
+					.type = TOKEN_TYPE::LIST,
+				});
+				// we do size here because the '(' delimiter token will live at
+				// that spot
+				list_stack.emplace(tokens.size() - 1, tokens.size());
+
 				// (
 				tokens.emplace_back(token_t{
 					.type = TOKEN_TYPE::DELIM,
 					.pname = input | std::ranges::views::take(1),
 				});
 				input.remove_prefix(1);
-
-				// Start the list
-				tokens.emplace_back(token_t{
-					.quoted = quoted,
-					.type = TOKEN_TYPE::LIST,
-				});
-				list_stack.emplace(tokens.back(), std::next(tokens.end(), -2));
+				input_pos++;
 			}
 			// )
 			else if (input.starts_with(L")"))
@@ -83,13 +92,12 @@ ParseTokens(std::wstring_view input)
 					.pname = input | std::ranges::views::take(1),
 				});
 				input.remove_prefix(1);
+				input_pos++;
 
 				if (!list_stack.empty())
 				{
 					auto list = list_stack.top();
-					auto token = list.first;
-					token.apval = std::ranges::subrange(
-						list.second, std::next(tokens.end(), -1));
+					lists.emplace_back(list.first, list.second, tokens.size());
 					list_stack.pop();
 				}
 			}
@@ -156,5 +164,14 @@ ParseTokens(std::wstring_view input)
 				};
 			}
 		}
+
+	for (auto &i : lists)
+	{
+		auto j = std::get<0>(i);
+		tokens[j].apval = std::ranges::subrange(
+			std::next(tokens.begin(), std::get<1>(i)),
+			std::next(tokens.begin(), std::get<2>(i)));
+	}
+
 	return {tokens, err};
 }

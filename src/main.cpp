@@ -1,12 +1,10 @@
-#include <uchar.h>
-
-#include <cstring>
+#include <cstdio>
 #include <format>
+#include <fstream>
 #include <iostream>
 #include <memory>
-#include <ncpp/Direct.hh>
 #include <ncpp/NotCurses.hh>
-#include <string_view>
+#include <ranges>
 
 #include "parser.hpp"
 
@@ -17,23 +15,99 @@ void PrintInput(std::shared_ptr<ncpp::Plane> plane,
 				std::vector<token_t> input,
 				const uint indent);
 
+void PrintWelcome(std::shared_ptr<ncpp::Plane> plane);
+
 int main(void)
 {
 	// setup basic options
-	notcurses_options opts{.termtype = nullptr,
-						   .loglevel{},
-						   .margin_t{},
-						   .margin_r{},
-						   .margin_b{},
-						   .margin_l{},
-						   .flags = NCOPTION_CLI_MODE};
+	notcurses_options opts{
+		.termtype = nullptr,
+		.loglevel{},
+		.margin_t{},
+		.margin_r{},
+		.margin_b{},
+		.margin_l{},
+		.flags = NCOPTION_CLI_MODE | NCOPTION_SUPPRESS_BANNERS};
 
 	ncpp::NotCurses ncurses{opts};
 	std::shared_ptr<ncpp::Plane> command_plane(ncurses.get_stdplane());
 
-	PromptInput(ncurses, command_plane);
+	std::wofstream output(
+		"debug.txt", std::ios_base::trunc | std::ios_base::out);
+
+	std::wcout.rdbuf(output.rdbuf());
+
+	uint y, x;
+	command_plane->get_cursor_yx(y, x);
+	auto c{command_plane->content(0, 0, y, x)};
+	command_plane->putstr(c);
+	ncurses.refresh({}, {});
 	ncurses.render();
+	PrintWelcome(command_plane);
+
+	for (int i = 0; i < 5; i++)
+	{
+		std::wstring command = PromptInput(ncurses, command_plane);
+
+		std::vector<token_t> tokens = ParseTokens(command).first;
+		for (auto &i : tokens | std::ranges::views::filter(
+									[](token_t t)
+									{ return t.type != TOKEN_TYPE::DELIM; }))
+		{
+			std::wcout << "type: ";
+			switch (i.type)
+			{
+				case TOKEN_TYPE::DELIM:
+					std::wcout << "DELIM";
+					break;
+				case TOKEN_TYPE::LIST:
+					std::wcout << "LIST :";
+					for (auto &j :
+						 i.apval | std::ranges::views::filter(
+									   [](token_t t)
+									   { return t.type != TOKEN_TYPE::DELIM; }))
+						std::wcout << j.pname;
+					std::wcout << std::endl;
+					break;
+				case TOKEN_TYPE::SYMBOL:
+					std::wcout << "SYMBOL";
+					break;
+				case TOKEN_TYPE::INT:
+					std::wcout << "INT";
+					break;
+				case TOKEN_TYPE::BOOL:
+					std::wcout << "BOOL";
+					std::wcout << i.pname;
+					break;
+				case TOKEN_TYPE::LAMBDA:
+					std::wcout << "LAMBDA";
+					break;
+			}
+			std::wcout << "\tpname: ";
+			std::wcout << i.pname;
+			std::wcout << std::endl;
+			output.flush();
+		}
+		std::wcout << std::endl << std::endl << "=============" << std::endl;
+	}
 };
+
+void PrintWelcome(std::shared_ptr<ncpp::Plane> plane)
+{
+	auto msg{
+		"        __     _                      \n"
+		"       / /    (_)_____ ____   ____    \n"
+		"      / /    / // ___// __ \\ / __ \\ \n"
+		"     / /___ / // /__ / /_/ // /_/ /   \n"
+		"    /_____//_/ \\___// .___// .___/   \n"
+		"                   /_/    /_/         \n"
+		"======================================\n"
+		" A terminal based interpreter for lisp\n"
+		"======================================\n\n\n"};
+
+	plane->cursor_move(-1, 0);
+	plane->putstr(msg);
+}
 
 std::wstring
 PromptInput(ncpp::NotCurses &ncurses, std::shared_ptr<ncpp::Plane> plane)
@@ -41,8 +115,11 @@ PromptInput(ncpp::NotCurses &ncurses, std::shared_ptr<ncpp::Plane> plane)
 	uint x, y;
 	plane->get_cursor_yx(y, x);
 	const uint dimx = plane->get_dim_x();
-	// size of "> "
+	plane->putstr(y, 0, "> ");
 	const uint buf_indent = 2;
+	ncurses.cursor_enable(y, 2);
+	ncurses.render();
+	// size of "> "
 	const uint line_size = dimx - buf_indent;
 
 	std::wstring buf;
@@ -58,10 +135,11 @@ PromptInput(ncpp::NotCurses &ncurses, std::shared_ptr<ncpp::Plane> plane)
 		if (ni.id == NCKEY_EOF || (ncinput_ctrl_p(&ni) && ni.id == 'D'))
 			return {};
 		else if (ni.id == NCKEY_ENTER)
-			// TODO: Check if the inputted lisp command has all paranthesis
-			// closed.
-			//  then act accordingly
+		{
+			plane->putstr("\n");
+			ncurses.refresh(y, x);
 			return buf;
+		}
 		// TODO: ctrl+action, to affect over words
 		else if (ni.id == NCKEY_BACKSPACE)
 		{
@@ -128,15 +206,12 @@ PromptInput(ncpp::NotCurses &ncurses, std::shared_ptr<ncpp::Plane> plane)
 		}
 
 		const uint cxpos{static_cast<uint>(bpos % line_size)};
-		/* const uint num_lines{static_cast<uint>((buf.size() - 1) /
-		 * line_size)}; */
 		const uint cypos{static_cast<uint>(bpos / (line_size))};
-		plane->erase();
+		ncplane_erase_region(plane->to_ncplane(), y - cypos + 1, 0, INT_MAX, 0);
 		plane->printf(y - cypos, 0, "> ");
 		auto tokens = ParseTokens(buf);
 
 		PrintInput(plane, tokens.first, buf_indent);
-		/* plane->cursor_move(y, buf_indent + cxpos); */
 		ncurses.cursor_enable(y, buf_indent + cxpos);
 		ncurses.render();
 	}
@@ -149,7 +224,6 @@ void PrintInput(std::shared_ptr<ncpp::Plane> plane,
 {
 	uint x, y;
 	plane->get_cursor_yx(y, x);
-
 	const uint dimx{plane->get_dim_x()};
 	const uint line_size{dimx - indent};
 

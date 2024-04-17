@@ -5,8 +5,6 @@
 
 #include "structs.hpp"
 
-using uint = unsigned int;
-
 class ParserError
 {
 public:
@@ -19,12 +17,12 @@ public:
 	};
 
 	Exception err{Exception::NONE};
-	std::pair<uint, uint> input_range_;
+	std::pair<uint, uint> error_range_;
 
 	ParserError() = default;
 
 	ParserError(Exception e, std::pair<uint, uint> range)
-		: err(e), input_range_(range){};
+		: err(e), error_range_(range){};
 
 	const wchar_t* what() const
 	{
@@ -46,5 +44,7 @@ public:
 	};
 };
 
+// We return the error here, this function is only called once and is non
+// recursive
 std::pair<std::vector<token_t>, ParserError>
 ParseTokens(std::wstring_view string);

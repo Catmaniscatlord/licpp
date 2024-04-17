@@ -1,52 +1,85 @@
-
-#include <forward_list>
+#pragma once
 #include <memory>
-#include <string>
-#include <variant>
 #include <vector>
 
-/*
- * We have 4 different types of data in Lisp
- * A cons-cell, a pname, An applied value (list or int), and an expr
- *
- * We can break this down into 3 types of data
- * A symbol containing a pname,
- * then either an apval, or an expr
- * or a list that points to other data types
- * and an integer
- */
+#include "structs.hpp"
 
-/*
- * INT apvalue
- * BOOL apvalue
- * LIST apvalue
- * SYMBOL pname
- * QUOTE list that doesnt get evaluated
- */
-
-enum class VALUE_TYPE
+// A list of possible errors that can occur during evaluation
+class EvalError
 {
-	INT,
-	BOOL,
-	LIST,
-	SYMBOL,
+public:
+	enum class Exception
+	{
+		SYMBOL_NOT_FOUND,
+		NOT_A_FUNCTION,
+		NOTREACHABLE,
+		NONE,
+	};
+
+	Exception err_{Exception::NONE};
+	token_t token_;
+
+	EvalError() = default;
+
+	EvalError(Exception e, token_t token) : err_{e}, token_{token} {};
+
+	token_t get_token()
+	{
+		return token_;
+	};
+
+	const wchar_t* what() const
+	{
+		switch (err_)
+		{
+			case Exception::NONE:
+				return L"No Error";
+				break;
+			case Exception::NOT_A_FUNCTION:
+				return L"Attempted to evaluate a non-function";
+				break;
+			case Exception::NOTREACHABLE:
+				return L"This code should not be reachable";
+				break;
+			case Exception::SYMBOL_NOT_FOUND:
+				return L"Could not find the symbol";
+				break;
+		}
+	};
 };
 
-struct value_t;
-
-using List = std::vector<value_t>;
-
-struct value_t
+// Singelton for the interpreter, can be called from anywhere, stores its
+// envirionment
+class Interpreter
 {
-	VALUE_TYPE type;
-	std::variant<int, bool, List> apval;
-	std::string pname{};
+private:
+	// The process of evaluating an expression in  LISP is inheriently recursive
+	// so we share the err member across the whole class.
+	// if there is an error the user has to explicitly ask for its value
+	static std::vector<EvalError> err_;
+	static std::shared_ptr<env_t> env_;
+	static Interpreter* pinstance_;
+	static std::mutex mutex_;
 
-	value_t cdr();
-	value_t* car();
-	const value_t* car() const;
+protected:
+	Interpreter(){};
+
+public:
+	Interpreter(Interpreter& other) = delete;
+	void operator=(Interpreter& other) = delete;
+
+	static Interpreter* getInstance();
+
+	token_t eval(token_t& token, std::shared_ptr<env_t> env = env_);
+	token_t proc(token_t& token, token_t& args);
+
+	std::vector<EvalError> get_error()
+	{
+		return err_;
+	};
+
+	void clear_error()
+	{
+		err_.clear();
+	}
 };
-
-value_t eval(const value_t& value, value_t& env);
-
-value_t apply(const value_t& f, value_t& args, value_t& env);

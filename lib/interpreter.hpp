@@ -10,18 +10,29 @@ class EvalError
 public:
 	enum class Exception
 	{
-		SYMBOL_NOT_FOUND,
+		INVALID_NUMBER_OF_ARGS,
+		INVALID_ARG_TYPES,
 		NOT_A_FUNCTION,
+		UNDEFINED,
+		REDEFINITION,
 		NOTREACHABLE,
+		OVERFLOW,
+		DIVIDE_BY_ZERO,
+		MATH_ERR,
 		NONE,
 	};
 
 	Exception err_{Exception::NONE};
 	token_t token_;
+	const std::wstring err_msg_;
 
 	EvalError() = default;
 
-	EvalError(Exception e, token_t token) : err_{e}, token_{token} {};
+	EvalError(Exception e, token_t token)
+		: err_{e}, token_{token}, err_msg_{L""} {};
+
+	EvalError(Exception e, std::wstring err_msg, token_t token)
+		: err_{e}, token_{token}, err_msg_{err_msg} {};
 
 	token_t get_token()
 	{
@@ -34,16 +45,23 @@ public:
 		{
 			case Exception::NONE:
 				return L"No Error";
-				break;
+			case Exception::OVERFLOW:
+				return L"int overflow";
+			case Exception::DIVIDE_BY_ZERO:
+				return L"division by 0";
+			case Exception::MATH_ERR:
+				return L"arithmetic with a non INT type";
 			case Exception::NOT_A_FUNCTION:
 				return L"Attempted to evaluate a non-function";
-				break;
 			case Exception::NOTREACHABLE:
 				return L"This code should not be reachable";
-				break;
-			case Exception::SYMBOL_NOT_FOUND:
-				return L"Could not find the symbol";
-				break;
+			case Exception::UNDEFINED:
+				return L"Symbol is undefined in the environment";
+			case Exception::REDEFINITION:
+				return L"Token is already defined";
+			case Exception::INVALID_NUMBER_OF_ARGS:
+			case Exception::INVALID_ARG_TYPES:
+				return err_msg_.c_str();
 		}
 	};
 };
@@ -71,7 +89,6 @@ public:
 	static Interpreter* getInstance();
 
 	token_t eval(token_t& token, std::shared_ptr<env_t> env = env_);
-	token_t proc(token_t& token, token_t& args);
 
 	std::vector<EvalError> get_error()
 	{
@@ -82,4 +99,17 @@ public:
 	{
 		err_.clear();
 	}
+
+private:
+	std::optional<token_t> default_functions(
+		token_t& token,
+		token_t& func,
+		std::span<token_t> args,
+		std::shared_ptr<env_t> env);
+
+	std::optional<token_t> special_functions(
+		token_t& token,
+		token_t& func,
+		std::span<token_t> args,
+		std::shared_ptr<env_t> env);
 };

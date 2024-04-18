@@ -1,5 +1,6 @@
 #include "parser.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <ranges>
 #include <stack>
@@ -149,8 +150,8 @@ ParseTokens(std::wstring_view input)
 					int x{std::stoi(std::wstring{str}, &pos)};
 					if (pos != str.size())
 						throw;
-					tokens.emplace_back(token_t{.quoted = quoted,
-												.val = x,
+					tokens.emplace_back(token_t{.val = x,
+												.quoted = quoted,
 												.type = TOKEN_TYPE::INT,
 												.pname = str});
 				}
@@ -165,12 +166,11 @@ ParseTokens(std::wstring_view input)
 			}
 		}
 
-	for (auto &i : lists)
+	for (auto &i : lists | std::ranges::views::reverse)
 	{
 		auto j = std::get<0>(i);
-		tokens[j].apval = std::ranges::subrange(
-			std::next(tokens.begin(), std::get<1>(i)),
-			std::next(tokens.begin(), std::get<2>(i)));
+		tokens[j].apval.assign(std::next(tokens.begin(), std::get<1>(i)),
+							   std::next(tokens.begin(), std::get<2>(i)));
 	}
 
 	return {tokens, err};

@@ -30,21 +30,21 @@ public:
 		{
 			case Exception::UNMATCHED_PARANTHESIS:
 				return L"unmatched paranthesis";
-				break;
 			case Exception::QUOTED_SPACE:
 				return L"Trying to quote a space, \"\' \"";
-				break;
 			case Exception::DOUBLE_QUOTE:
 				return L"Double quotes are un supported";
-				break;
 			case Exception::NONE:
 				return L"No Error";
-				break;
 		}
 	};
 };
 
-// We return the error here, this function is only called once and is non
-// recursive
+// Returns a vector of tokens that is meant to be printed,
+// Does not contain lists. This is essentially token tagging
 std::pair<std::vector<token_t>, ParserError>
-ParseTokens(std::wstring_view string);
+ParsePrintTokens(std::wstring_view string);
+
+// Returns a list of tokens to be evaluated.
+std::pair<std::vector<token_t>, ParserError>
+ParseEvalTokens(std::wstring_view string);

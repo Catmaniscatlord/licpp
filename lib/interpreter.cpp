@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <iostream>
 #include <memory>
 #include <numeric>
 #include <ranges>
@@ -60,11 +61,17 @@ token_t Interpreter::eval(token_t& token, std::shared_ptr<env_t> env)
 			return token;
 		case TOKEN_TYPE::LIST:
 		{
+			if (token.apval.empty())
+			{
+				err_.emplace_back(EvalError::Exception::EVAL_EMPTY_LIST, token);
+				return {};
+			}
+
 			token_t func;
-			if (token.apval.back().type == TOKEN_TYPE::LIST)
-				func = eval(token.apval.back());
+			if (token.apval.front().type == TOKEN_TYPE::LIST)
+				func = eval(token.apval.front(), env);
 			else
-				func = token.apval.back();
+				func = token.apval.front();
 
 			switch (func.type)
 			{
@@ -150,15 +157,16 @@ token_t Interpreter::eval(token_t& token, std::shared_ptr<env_t> env)
 					// envrionment
 					return eval(*lambda.expr, new_env);
 				}
-				case TOKEN_TYPE::DELIM:
 				case TOKEN_TYPE::LIST:
 				case TOKEN_TYPE::INT:
 				case TOKEN_TYPE::BOOL:
+				case TOKEN_TYPE::DELIM:
 					err_.emplace_back(
 						EvalError::Exception::NOT_A_FUNCTION, func);
 					return {};
 					break;
 			}
+			return {};
 		}
 		case TOKEN_TYPE::LAMBDA:
 		case TOKEN_TYPE::DELIM:
@@ -181,7 +189,7 @@ std::optional<token_t> Interpreter::default_functions(
 	auto ret{special_functions(token, func, raw_args, env)};
 	if (ret.has_value())
 		ret.value();
-	//
+
 	// for the rest of these the args are evaluated
 	auto argsv = std::ranges::views::transform(
 		raw_args, [this, env](token_t& t) -> token_t { return eval(t, env); });
@@ -265,7 +273,7 @@ std::optional<token_t> Interpreter::default_functions(
 							  L"car takes arg types: list", token);
 			return token_t{};
 		}
-		return args[0].apval.back();
+		return args[0].apval.front();
 	}
 	else if (func.pname == L"cdr")
 	{

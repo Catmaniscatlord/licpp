@@ -4,7 +4,6 @@
 #include <functional>
 #include <memory>
 #include <optional>
-#include <span>
 #include <string_view>
 #include <unordered_set>
 #include <vector>
@@ -33,7 +32,7 @@ struct token_t
 	std::vector<token_t> apval{};
 	// This is a pointer as we have to pass a single token to be evaluated, this
 	// has to be a list
-	std::shared_ptr<token_t> expr;
+	std::shared_ptr<token_t> expr{};
 	std::shared_ptr<env_t> env{};
 
 private:

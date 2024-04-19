@@ -6,6 +6,7 @@
 #include <ncpp/NotCurses.hh>
 #include <ranges>
 
+#include "interpreter.hpp"
 #include "parser.hpp"
 
 std::wstring
@@ -49,11 +50,21 @@ int main(void)
 	{
 		std::wstring command = PromptInput(ncurses, command_plane);
 
-		std::vector<token_t> tokens = ParseTokens(command).first;
-		for (auto &i : tokens | std::ranges::views::filter(
-									[](token_t t)
-									{ return t.type != TOKEN_TYPE::DELIM; }))
+		std::vector<token_t> tokens = ParseEvalTokens(command).first;
+
+		Interpreter *interp{Interpreter::getInstance()};
+		auto res{interp->eval(tokens[0])};
+
+		for (auto i : interp->get_error())
 		{
+			std::wcout << i.what() << std::endl;
+			auto j{i.get_token()};
+			std::wcout << j.pname << " " << j.val;
+			std::wcout << std::endl;
+		}
+
+		{
+			auto i{res};
 			std::wcout << "type: ";
 			switch (i.type)
 			{
@@ -74,6 +85,7 @@ int main(void)
 					break;
 				case TOKEN_TYPE::INT:
 					std::wcout << "INT";
+					std::wcout << "\t value: " << i.val;
 					break;
 				case TOKEN_TYPE::BOOL:
 					std::wcout << "BOOL";
@@ -90,6 +102,7 @@ int main(void)
 		}
 		std::wcout << std::endl << std::endl << "=============" << std::endl;
 	}
+	output.close();
 };
 
 void PrintWelcome(std::shared_ptr<ncpp::Plane> plane)
@@ -209,7 +222,7 @@ PromptInput(ncpp::NotCurses &ncurses, std::shared_ptr<ncpp::Plane> plane)
 		const uint cypos{static_cast<uint>(bpos / (line_size))};
 		ncplane_erase_region(plane->to_ncplane(), y - cypos + 1, 0, INT_MAX, 0);
 		plane->printf(y - cypos, 0, "> ");
-		auto tokens = ParseTokens(buf);
+		auto tokens = ParsePrintTokens(buf);
 
 		PrintInput(plane, tokens.first, buf_indent);
 		ncurses.cursor_enable(y, buf_indent + cxpos);

@@ -1,5 +1,6 @@
 #pragma once
 #include <memory>
+#include <span>
 #include <vector>
 
 #include "structs.hpp"
@@ -18,6 +19,7 @@ public:
 		NOTREACHABLE,
 		OVERFLOW,
 		DIVIDE_BY_ZERO,
+		EVAL_EMPTY_LIST,
 		MATH_ERR,
 		NONE,
 	};
@@ -50,7 +52,7 @@ public:
 			case Exception::DIVIDE_BY_ZERO:
 				return L"division by 0";
 			case Exception::MATH_ERR:
-				return L"arithmetic with a non INT type";
+				return L"arithmatic with a non INT type";
 			case Exception::NOT_A_FUNCTION:
 				return L"Attempted to evaluate a non-function";
 			case Exception::NOTREACHABLE:
@@ -59,10 +61,13 @@ public:
 				return L"Symbol is undefined in the environment";
 			case Exception::REDEFINITION:
 				return L"Token is already defined";
+			case Exception::EVAL_EMPTY_LIST:
+				return L"You can't evaluate an empty list silly goose";
 			case Exception::INVALID_NUMBER_OF_ARGS:
 			case Exception::INVALID_ARG_TYPES:
 				return err_msg_.c_str();
 		}
+		return L"tf did you do?";
 	};
 };
 

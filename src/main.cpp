@@ -4,7 +4,7 @@
 #include <iostream>
 #include <memory>
 #include <ncpp/NotCurses.hh>
-#include <ranges>
+#include <string_view>
 
 #include "interpreter.hpp"
 #include "parser.hpp"
@@ -13,7 +13,7 @@ std::wstring
 PromptInput(ncpp::NotCurses &ncurses, std::shared_ptr<ncpp::Plane> plane);
 
 void PrintInput(std::shared_ptr<ncpp::Plane> plane,
-				std::vector<token_t> input,
+				std::vector<parse_token_t> input,
 				const uint indent);
 
 void PrintWelcome(std::shared_ptr<ncpp::Plane> plane);
@@ -36,7 +36,7 @@ int main(void)
 	std::wofstream output(
 		"debug.txt", std::ios_base::trunc | std::ios_base::out);
 
-	std::wcout.rdbuf(output.rdbuf());
+	std::wcerr.rdbuf(output.rdbuf());
 
 	uint y, x;
 	command_plane->get_cursor_yx(y, x);
@@ -46,63 +46,45 @@ int main(void)
 	ncurses.render();
 	PrintWelcome(command_plane);
 
-	for (int i = 0; i < 5; i++)
+	while (true)
 	{
 		std::wstring command = PromptInput(ncurses, command_plane);
 
-		std::vector<token_t> tokens = ParseEvalTokens(command).first;
+		auto parse_res{ParseEvalTokens(command)};
+		if (parse_res.second.err != ParserError::Exception::NONE)
+			continue;
+
+		std::vector<token_t> tokens{parse_res.first};
 
 		Interpreter *interp{Interpreter::getInstance()};
 		auto res{interp->eval(tokens[0])};
 
-		for (auto i : interp->get_error())
+		std::wcerr << "\n=============\n"
+				   << "errors\n"
+				   << "=============\n";
+
+		for (auto &i : interp->get_error())
 		{
-			std::wcout << i.what() << std::endl;
-			auto j{i.get_token()};
-			std::wcout << j.pname << " " << j.val;
-			std::wcout << std::endl;
+			std::wcerr << i.what() << "\n" << i.get_token() << "\n";
+			if (i.err_ == EvalError::Exception::UNDEFINED)
+				std::wcerr << i.get_env();
 		}
 
-		{
-			auto i{res};
-			std::wcout << "type: ";
-			switch (i.type)
-			{
-				case TOKEN_TYPE::DELIM:
-					std::wcout << "DELIM";
-					break;
-				case TOKEN_TYPE::LIST:
-					std::wcout << "LIST :";
-					for (auto &j :
-						 i.apval | std::ranges::views::filter(
-									   [](token_t t)
-									   { return t.type != TOKEN_TYPE::DELIM; }))
-						std::wcout << j.pname;
-					std::wcout << std::endl;
-					break;
-				case TOKEN_TYPE::SYMBOL:
-					std::wcout << "SYMBOL";
-					break;
-				case TOKEN_TYPE::INT:
-					std::wcout << "INT";
-					std::wcout << "\t value: " << i.val;
-					break;
-				case TOKEN_TYPE::BOOL:
-					std::wcout << "BOOL";
-					std::wcout << i.pname;
-					break;
-				case TOKEN_TYPE::LAMBDA:
-					std::wcout << "LAMBDA";
-					break;
-			}
-			std::wcout << "\tpname: ";
-			std::wcout << i.pname;
-			std::wcout << std::endl;
-			output.flush();
-		}
-		std::wcout << std::endl << std::endl << "=============" << std::endl;
+		interp->clear_error();
+
+		std::wcerr << "\n=============\n"
+				   << "results\n"
+				   << "=============\n";
+		std::wcerr << res;
+		std::wcerr << "\n=============\n";
+
+		std::wcerr << "\n=============\n"
+				   << "env\n"
+				   << "=============\n";
+		/* std::wcerr << *interp->get_env(); */
 	}
-	output.close();
+
+	ncurses.stop();
 };
 
 void PrintWelcome(std::shared_ptr<ncpp::Plane> plane)
@@ -232,8 +214,9 @@ PromptInput(ncpp::NotCurses &ncurses, std::shared_ptr<ncpp::Plane> plane)
 }
 
 void PrintInput(std::shared_ptr<ncpp::Plane> plane,
-				std::vector<token_t> input,
+				std::vector<parse_token_t> input,
 				const uint indent)
+
 {
 	uint x, y;
 	plane->get_cursor_yx(y, x);
@@ -248,9 +231,9 @@ void PrintInput(std::shared_ptr<ncpp::Plane> plane,
 	// number of unmatched paranthesis positive is unmatched left negative is
 	// unmatched right
 	int para_count{0};
-	for (token_t &tok : input)
+	for (auto &tok : input)
 	{
-		auto str = tok.pname;
+		auto str{tok.pname};
 		/* std::wcerr << str; */
 		/* continue; */
 		if (str == L"(")

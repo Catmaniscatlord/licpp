@@ -26,6 +26,7 @@ public:
 
 	Exception err_{Exception::NONE};
 	token_t token_;
+	std::shared_ptr<env_t> env_;
 	const std::wstring err_msg_;
 
 	EvalError() = default;
@@ -33,10 +34,24 @@ public:
 	EvalError(Exception e, token_t token)
 		: err_{e}, token_{token}, err_msg_{L""} {};
 
+	EvalError(Exception e, token_t token, std::shared_ptr<env_t> env)
+		: err_{e}, token_{token}, env_{env}, err_msg_{L""} {};
+
 	EvalError(Exception e, std::wstring err_msg, token_t token)
 		: err_{e}, token_{token}, err_msg_{err_msg} {};
 
-	token_t get_token()
+	EvalError(Exception e,
+			  std::wstring err_msg,
+			  token_t token,
+			  std::shared_ptr<env_t> env)
+		: err_{e}, token_{token}, env_{env}, err_msg_{err_msg} {};
+
+	auto get_env()
+	{
+		return env_;
+	};
+
+	auto get_token()
 	{
 		return token_;
 	};
@@ -45,27 +60,27 @@ public:
 	{
 		switch (err_)
 		{
-			case Exception::NONE:
-				return L"No Error";
-			case Exception::OVERFLOW:
-				return L"int overflow";
-			case Exception::DIVIDE_BY_ZERO:
-				return L"division by 0";
-			case Exception::MATH_ERR:
-				return L"arithmatic with a non INT type";
-			case Exception::NOT_A_FUNCTION:
-				return L"Attempted to evaluate a non-function";
-			case Exception::NOTREACHABLE:
-				return L"This code should not be reachable";
-			case Exception::UNDEFINED:
-				return L"Symbol is undefined in the environment";
-			case Exception::REDEFINITION:
-				return L"Token is already defined";
-			case Exception::EVAL_EMPTY_LIST:
-				return L"You can't evaluate an empty list silly goose";
-			case Exception::INVALID_NUMBER_OF_ARGS:
-			case Exception::INVALID_ARG_TYPES:
-				return err_msg_.c_str();
+		case Exception::NONE:
+			return L"No Error";
+		case Exception::OVERFLOW:
+			return L"int overflow";
+		case Exception::DIVIDE_BY_ZERO:
+			return L"division by 0";
+		case Exception::MATH_ERR:
+			return L"arithmatic with a non INT type";
+		case Exception::NOT_A_FUNCTION:
+			return L"Attempted to evaluate a non-function";
+		case Exception::NOTREACHABLE:
+			return L"This code should not be reachable";
+		case Exception::UNDEFINED:
+			return L"Symbol is undefined in the environment";
+		case Exception::REDEFINITION:
+			return L"Token is already defined";
+		case Exception::EVAL_EMPTY_LIST:
+			return L"You can't evaluate an empty list silly goose";
+		case Exception::INVALID_NUMBER_OF_ARGS:
+		case Exception::INVALID_ARG_TYPES:
+			return err_msg_.c_str();
 		}
 		return L"tf did you do?";
 	};
@@ -103,6 +118,11 @@ public:
 	void clear_error()
 	{
 		err_.clear();
+	}
+
+	auto get_env()
+	{
+		return env_;
 	}
 
 private:

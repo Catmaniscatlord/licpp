@@ -9,17 +9,18 @@
 
 #include "structs.hpp"
 
-std::pair<std::vector<token_t>, ParserError>
+std::pair<std::vector<parse_token_t>, ParserError>
 ParsePrintTokens(std::wstring_view input)
 {
 	// Used to keep track where in the input we are
 	// so we can throw errors reasonable error messages on parsing
 	uint input_pos{};
 	ParserError err{};
-	std::vector<token_t> tokens;
+	std::vector<parse_token_t> tokens;
 
 	bool quoted;
 
+	// Parse the users input into printiable and tagged tokens
 	while (!input.empty())
 		// White space characters
 		if (input.starts_with(L" "))
@@ -29,7 +30,7 @@ ParsePrintTokens(std::wstring_view input)
 			if (n == input.npos)
 				n = input.size();
 
-			tokens.emplace_back(token_t{
+			tokens.emplace_back(parse_token_t{
 				.type = TOKEN_TYPE::DELIM,
 				.pname = input | std::ranges::views::take(n),
 			});
@@ -43,7 +44,7 @@ ParsePrintTokens(std::wstring_view input)
 			if (input.starts_with(L"\'"))
 			{
 				quoted = true;
-				tokens.emplace_back(token_t{
+				tokens.emplace_back(parse_token_t{
 					.type = TOKEN_TYPE::DELIM,
 					.pname = input | std::ranges::views::take(1),
 				});
@@ -62,7 +63,7 @@ ParsePrintTokens(std::wstring_view input)
 			if (input.starts_with(L"("))
 			{
 				// (
-				tokens.emplace_back(token_t{
+				tokens.emplace_back(parse_token_t{
 					.type = TOKEN_TYPE::DELIM,
 					.pname = input | std::ranges::views::take(1),
 				});
@@ -73,7 +74,7 @@ ParsePrintTokens(std::wstring_view input)
 			else if (input.starts_with(L")"))
 			{
 				// )
-				tokens.emplace_back(token_t{
+				tokens.emplace_back(parse_token_t{
 					.type = TOKEN_TYPE::DELIM,
 					.pname = input | std::ranges::views::take(1),
 				});
@@ -110,36 +111,36 @@ ParsePrintTokens(std::wstring_view input)
 				// Now convert the value to either a symbol an int or a boolean
 				if (str == L"T")
 				{
-					tokens.emplace_back(token_t{.quoted = quoted,
-												.is_true = true,
-												.type = TOKEN_TYPE::BOOL,
-												.pname = str});
+					tokens.emplace_back(parse_token_t{.quoted = quoted,
+													  .is_true = true,
+													  .type = TOKEN_TYPE::BOOL,
+													  .pname = str});
 				}
 				else if (str == L"NIL")
 				{
-					tokens.emplace_back(token_t{.quoted = quoted,
-												.is_true = false,
-												.type = TOKEN_TYPE::BOOL,
-												.pname = str});
+					tokens.emplace_back(parse_token_t{.quoted = quoted,
+													  .is_true = false,
+													  .type = TOKEN_TYPE::BOOL,
+													  .pname = str});
 				}
 				try
 				{
 					size_t pos{};
-					int x{std::stoi(std::wstring{str}, &pos)};
+					std::stoi(std::wstring{str}, &pos);
 					if (pos != str.size())
 						throw;
-					tokens.emplace_back(token_t{.val = x,
-												.quoted = quoted,
-												.type = TOKEN_TYPE::INT,
-												.pname = str});
+					tokens.emplace_back(parse_token_t{.quoted = quoted,
+													  .type = TOKEN_TYPE::INT,
+													  .pname = str});
 				}
 				catch (...)
 				{
 					// TODO: tell the user when its an overflow
 					//  not convertable to an integer
-					tokens.emplace_back(token_t{.quoted = quoted,
-												.type = TOKEN_TYPE::SYMBOL,
-												.pname = str});
+					tokens.emplace_back(
+						parse_token_t{.quoted = quoted,
+									  .type = TOKEN_TYPE::SYMBOL,
+									  .pname = str});
 				};
 			}
 		}
@@ -161,6 +162,11 @@ ParseEvalTokens(std::wstring_view input)
 
 	bool quoted;
 
+	if (input.empty())
+	{
+		err = ParserError{ParserError::Exception::NO_INPUT, {0, 0}};
+		return {tokens, err};
+	}
 	while (!input.empty())
 		// White space characters
 		if (input.starts_with(L" "))
@@ -274,17 +280,19 @@ ParseEvalTokens(std::wstring_view input)
 				// Now convert the value to either a symbol an int or a boolean
 				if (str == L"T")
 				{
-					tokens.emplace_back(token_t{.quoted = quoted,
-												.is_true = true,
-												.type = TOKEN_TYPE::BOOL,
-												.pname = str});
+					tokens.emplace_back(
+						token_t{.quoted = quoted,
+								.is_true = true,
+								.type = TOKEN_TYPE::BOOL,
+								.pname{std::make_shared<std::wstring>(str)}});
 				}
 				else if (str == L"NIL")
 				{
-					tokens.emplace_back(token_t{.quoted = quoted,
-												.is_true = false,
-												.type = TOKEN_TYPE::BOOL,
-												.pname = str});
+					tokens.emplace_back(
+						token_t{.quoted = quoted,
+								.is_true = false,
+								.type = TOKEN_TYPE::BOOL,
+								.pname{std::make_shared<std::wstring>(str)}});
 				}
 				try
 				{
@@ -292,18 +300,20 @@ ParseEvalTokens(std::wstring_view input)
 					int x{std::stoi(std::wstring{str}, &pos)};
 					if (pos != str.size())
 						throw;
-					tokens.emplace_back(token_t{.val = x,
-												.quoted = quoted,
-												.type = TOKEN_TYPE::INT,
-												.pname = str});
+					tokens.emplace_back(
+						token_t{.val = x,
+								.quoted = quoted,
+								.type = TOKEN_TYPE::INT,
+								.pname{std::make_shared<std::wstring>(str)}});
 				}
 				catch (...)
 				{
 					// TODO: tell the user when its an overflow
 					//  not convertable to an integer
-					tokens.emplace_back(token_t{.quoted = quoted,
-												.type = TOKEN_TYPE::SYMBOL,
-												.pname = str});
+					tokens.emplace_back(
+						token_t{.quoted = quoted,
+								.type = TOKEN_TYPE::SYMBOL,
+								.pname{std::make_shared<std::wstring>(str)}});
 				};
 			}
 		}

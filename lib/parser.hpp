@@ -11,6 +11,7 @@ public:
 	enum class Exception
 	{
 		NONE,
+		NO_INPUT,
 		DOUBLE_QUOTE,
 		QUOTED_SPACE,
 		UNMATCHED_PARANTHESIS
@@ -28,21 +29,23 @@ public:
 	{
 		switch (err)
 		{
-			case Exception::UNMATCHED_PARANTHESIS:
-				return L"unmatched paranthesis";
-			case Exception::QUOTED_SPACE:
-				return L"Trying to quote a space, \"\' \"";
-			case Exception::DOUBLE_QUOTE:
-				return L"Double quotes are un supported";
-			case Exception::NONE:
-				return L"No Error";
+		case Exception::UNMATCHED_PARANTHESIS:
+			return L"unmatched paranthesis";
+		case Exception::QUOTED_SPACE:
+			return L"Trying to quote a space, \"\' \"";
+		case Exception::DOUBLE_QUOTE:
+			return L"Double quotes are un supported";
+		case Exception::NO_INPUT:
+			return L"No input given";
+		case Exception::NONE:
+			return L"No Error";
 		}
 	};
 };
 
 // Returns a vector of tokens that is meant to be printed,
 // Does not contain lists. This is essentially token tagging
-std::pair<std::vector<token_t>, ParserError>
+std::pair<std::vector<parse_token_t>, ParserError>
 ParsePrintTokens(std::wstring_view string);
 
 // Returns a list of tokens to be evaluated.

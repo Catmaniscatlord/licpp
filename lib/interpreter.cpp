@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
-#include <iostream>
+#include <format>
 #include <memory>
 #include <numeric>
 #include <ranges>
@@ -11,7 +11,8 @@
 #include "structs.hpp"
 
 std::vector<EvalError> Interpreter::err_{};
-std::shared_ptr<env_t> Interpreter::env_{new env_t};
+std::shared_ptr<env_t> Interpreter::env_{
+	std::make_shared<env_t>(env_t{.env_name_{L"global"}})};
 
 // singleton stuff
 Interpreter* Interpreter::pinstance_{nullptr};
@@ -37,142 +38,114 @@ token_t Interpreter::eval(token_t& token, std::shared_ptr<env_t> env)
 
 	switch (token.type)
 	{
+	case TOKEN_TYPE::SYMBOL:
+	{
+		// This little section is for error checking on if the envrionment
+		// contained the value or not
+		return env
+			->find(token)
+			// returns the value if it exists, or a blank optional
+			.or_else(
+				[&token, &env]()
+				{
+					err_.emplace_back(
+						EvalError::Exception::UNDEFINED, token, env);
+					return std::optional<token_t>{};
+				})
+			// If we found the value we return it, otherwise we
+			// return a default value
+			.value_or(token_t{});
+	}
+	case TOKEN_TYPE::INT:
+	case TOKEN_TYPE::BOOL:
+		return token;
+	case TOKEN_TYPE::LIST:
+	{
+		if (token.apval.empty())
+		{
+			err_.emplace_back(EvalError::Exception::EVAL_EMPTY_LIST, token);
+			return {};
+		}
+
+		auto func{token.apval.front()};
+
+		switch (func.type)
+		{
 		case TOKEN_TYPE::SYMBOL:
 		{
-			// This little section is for error checking on if the envrionment
-			// contained the value or not
-			auto ret = env_->find(token)
-						   // returns the value if it exists, or >>>
-						   .or_else(
-							   [token]()
-							   {
-								   err_.emplace_back(
-									   EvalError::Exception::UNDEFINED, token);
-								   // >>> This if it has no value
-								   return std::optional<token_t>{};
-							   })
-						   // If we found the value we return it, otherwise we
-						   // return a default value
-						   .value_or(token_t{});
-			return ret;
-		}
-		case TOKEN_TYPE::INT:
-		case TOKEN_TYPE::BOOL:
-			return token;
-		case TOKEN_TYPE::LIST:
-		{
-			if (token.apval.empty())
+			if (env->find(func).has_value())
 			{
-				err_.emplace_back(EvalError::Exception::EVAL_EMPTY_LIST, token);
-				return {};
-			}
-
-			token_t func;
-			if (token.apval.front().type == TOKEN_TYPE::LIST)
-				func = eval(token.apval.front(), env);
-			else
-				func = token.apval.front();
-
-			switch (func.type)
-			{
-				case TOKEN_TYPE::SYMBOL:
-				{
-					if (env->find(func).has_value())
-					{
-						if (env->find(func).value().type == TOKEN_TYPE::LAMBDA)
-						{
-							auto lambda = env->find(func).value();
-							// This takes the args in the list and applies them
-							// to the lambdas args
-							auto env_args = std::ranges::views::zip_transform(
-								[this, env](token_t l, token_t r) -> token_t
-								{
-									token_t new_t{eval(r, env)};
-									new_t.pname = l.pname;
-									return new_t;
-								},
-								// the arguments
-								lambda.apval,
-								// the variables to be evaluated
-								token.apval | std::ranges::views::drop(1));
-
-							// create the new environment with the functions
-							// arguments and a chain to the functions
-							// environment
-							std::shared_ptr<env_t> new_env{new env_t{
-								.curr_env_{env_args.begin(), env_args.end()},
-								.next_env_{func.env}}};
-							// evaluate the expression body within the given
-							// envrionment
-							return eval(*lambda.expr, new_env);
-						}
-						else
-						{
-							err_.emplace_back(
-								EvalError::Exception::NOT_A_FUNCTION,
-								env->find(func).value());
-							return {};
-						}
-					}
-					else
-					{
-						return default_functions(
-								   token, func,
-								   token.apval | std::ranges::views::drop(1),
-								   env)
-							.or_else(
-								[token]() -> std::optional<token_t>
-								{
-									err_.emplace_back(
-										EvalError::Exception::UNDEFINED, token);
-									return {};
-								})
-							.value_or(token_t{});
-					}
-				}
-				case TOKEN_TYPE::LAMBDA:
+				if (env->find(func).value().type == TOKEN_TYPE::LAMBDA)
 				{
 					auto lambda = env->find(func).value();
 					// This takes the args in the list and applies them
 					// to the lambdas args
-					auto env_args = std::ranges::views::zip_transform(
-						[this, env](token_t l, token_t r) -> token_t
-						{
-							token_t new_t{eval(r, env)};
-							new_t.pname = l.pname;
-							return new_t;
-						},
-						// the arguments
-						lambda.apval,
-						// the variables to be evaluated
-						token.apval | std::ranges::views::drop(1));
+					for (auto i : std::ranges::views::zip(
+							 lambda.apval,
+							 token.apval | std::ranges::views::drop(1)))
+					{
+						// put the args into the functions defined envrionment
+						lambda.env->curr_env_[*i.first.pname] =
+							eval(i.second, env);
+					}
 
-					// create the new environment with the functions
-					// arguments and a chain to the functions
-					// environment
-					std::shared_ptr<env_t> new_env{
-						new env_t{.curr_env_{env_args.begin(), env_args.end()},
-								  .next_env_{func.env}}};
 					// evaluate the expression body within the given
 					// envrionment
-					return eval(*lambda.expr, new_env);
+					return eval(*lambda.expr, lambda.env);
 				}
-				case TOKEN_TYPE::LIST:
-				case TOKEN_TYPE::INT:
-				case TOKEN_TYPE::BOOL:
-				case TOKEN_TYPE::DELIM:
-					err_.emplace_back(
-						EvalError::Exception::NOT_A_FUNCTION, func);
+				else
+				{
+					err_.emplace_back(EvalError::Exception::NOT_A_FUNCTION,
+									  env->find(func).value());
 					return {};
-					break;
+				}
 			}
-			return {};
+			else
+			{
+				return default_functions(
+						   token, func,
+						   token.apval | std::ranges::views::drop(1), env)
+					.or_else(
+						[&env, &func]() -> std::optional<token_t>
+						{
+							err_.emplace_back(
+								EvalError::Exception::UNDEFINED, func, env);
+							return {};
+						})
+					.value_or(token_t{});
+			}
 		}
 		case TOKEN_TYPE::LAMBDA:
+		{
+			auto lambda = env->find(func).value();
+			// This takes the args in the list and applies them
+			// to the lambdas args
+			for (auto i : std::ranges::views::zip(
+					 lambda.apval, token.apval | std::ranges::views::drop(1)))
+			{
+				// put the args into the functions defined envrionment
+				lambda.env->curr_env_[*i.first.pname] = eval(i.second, env);
+			}
+
+			// evaluate the expression body within the given
+			// envrionment
+			return eval(*lambda.expr, lambda.env);
+		}
+		case TOKEN_TYPE::LIST:
+		case TOKEN_TYPE::INT:
+		case TOKEN_TYPE::BOOL:
 		case TOKEN_TYPE::DELIM:
-			// This should never be reached.
-			err_.emplace_back(EvalError::Exception::NOTREACHABLE, token);
+			err_.emplace_back(EvalError::Exception::NOT_A_FUNCTION, func);
 			return {};
+			break;
+		}
+		return {};
+	}
+	case TOKEN_TYPE::LAMBDA:
+	case TOKEN_TYPE::DELIM:
+		// This should never be reached.
+		err_.emplace_back(EvalError::Exception::NOTREACHABLE, token);
+		return {};
 	}
 
 	return token;
@@ -188,14 +161,14 @@ std::optional<token_t> Interpreter::default_functions(
 
 	auto ret{special_functions(token, func, raw_args, env)};
 	if (ret.has_value())
-		ret.value();
+		return ret.value();
 
 	// for the rest of these the args are evaluated
 	auto argsv = std::ranges::views::transform(
 		raw_args, [this, env](token_t& t) -> token_t { return eval(t, env); });
 	std::vector<token_t> args{argsv.begin(), argsv.end()};
 
-	if (func.pname == L"mapcar")
+	if (*func.pname == L"mapcar")
 	{
 		// mapcar takes at least 2 args, mapcar func args args args ...
 		if (args.size() < 2)
@@ -249,9 +222,12 @@ std::optional<token_t> Interpreter::default_functions(
 			auto arg_list =
 				actual_args |
 				std::ranges::views::transform(
-					[i](token_t& t) -> token_t& { return t.apval[i]; });
+					[&i](token_t& t) -> token_t& { return t.apval[i]; });
 
+			// put the args into the list
 			eval_token.apval.assign(arg_list.begin(), arg_list.end());
+			//
+			// put the function at the beginning of the list
 			eval_token.apval.insert(eval_token.apval.begin(), args[0]);
 
 			results.push_back(eval(eval_token, env));
@@ -259,7 +235,7 @@ std::optional<token_t> Interpreter::default_functions(
 
 		return token_t{.type = TOKEN_TYPE::LIST, .apval{std::move(results)}};
 	}
-	else if (func.pname == L"car")
+	else if (*func.pname == L"car")
 	{
 		if (args.size() != 1)
 		{
@@ -275,7 +251,7 @@ std::optional<token_t> Interpreter::default_functions(
 		}
 		return args[0].apval.front();
 	}
-	else if (func.pname == L"cdr")
+	else if (*func.pname == L"cdr")
 	{
 		if (args.size() != 1)
 		{
@@ -293,7 +269,7 @@ std::optional<token_t> Interpreter::default_functions(
 		ret.apval.erase(ret.apval.begin());
 		return ret;
 	}
-	else if (func.pname == L"cons")
+	else if (*func.pname == L"cons")
 	{
 		if (args.size() != 1)
 		{
@@ -313,7 +289,7 @@ std::optional<token_t> Interpreter::default_functions(
 
 		return ret;
 	}
-	else if (func.pname == L"sqrt")
+	else if (*func.pname == L"sqrt")
 	{
 		if (args.size() != 1)
 		{
@@ -333,13 +309,13 @@ std::optional<token_t> Interpreter::default_functions(
 			.type = TOKEN_TYPE::INT,
 		};
 	}
-	else if (func.pname == L"pow")
+	else if (*func.pname == L"pow")
 		// TODO: Error checking
 		return token_t{
 			.val = static_cast<int>(pow(args[0].val, args[1].val)),
 			.type = TOKEN_TYPE::INT,
 		};
-	else if (func.pname == L"+")
+	else if (*func.pname == L"+")
 		return token_t{
 			.val = std::accumulate(
 				args.begin(), args.end(), 0,
@@ -348,11 +324,18 @@ std::optional<token_t> Interpreter::default_functions(
 					if (x.type != TOKEN_TYPE::INT)
 						err_.emplace_back(
 							EvalError::Exception::MATH_ERR, token);
-					return total + x.val;
+					int res;
+					if (__builtin_add_overflow(total, x.val, &res))
+						err_.emplace_back(EvalError::Exception::OVERFLOW,
+										  token_t{
+											  .val = res,
+											  .type = TOKEN_TYPE::INT,
+										  });
+					return res;
 				}),
 			.type = TOKEN_TYPE::INT,
 		};
-	else if (func.pname == L"-")
+	else if (*func.pname == L"-")
 		return token_t{
 			.val = std::accumulate(
 				std::next(args.begin()), args.end(), args.begin()->val,
@@ -361,11 +344,18 @@ std::optional<token_t> Interpreter::default_functions(
 					if (x.type != TOKEN_TYPE::INT)
 						err_.emplace_back(
 							EvalError::Exception::MATH_ERR, token);
-					return total - x.val;
+					int res;
+					if (__builtin_add_overflow(total, x.val, &res))
+						err_.emplace_back(EvalError::Exception::OVERFLOW,
+										  token_t{
+											  .val = res,
+											  .type = TOKEN_TYPE::INT,
+										  });
+					return res;
 				}),
 			.type = TOKEN_TYPE::INT,
 		};
-	else if (func.pname == L"*")
+	else if (*func.pname == L"*")
 		return token_t{
 			.val = std::accumulate(
 				std::next(args.begin()), args.end(), 1,
@@ -374,11 +364,19 @@ std::optional<token_t> Interpreter::default_functions(
 					if (x.type != TOKEN_TYPE::INT)
 						err_.emplace_back(
 							EvalError::Exception::MATH_ERR, token);
-					return total * x.val;
+
+					int res;
+					if (__builtin_mul_overflow(total, x.val, &res))
+						err_.emplace_back(EvalError::Exception::OVERFLOW,
+										  token_t{
+											  .val = res,
+											  .type = TOKEN_TYPE::INT,
+										  });
+					return res;
 				}),
 			.type = TOKEN_TYPE::INT,
 		};
-	else if (func.pname == L"/")
+	else if (*func.pname == L"/")
 		return token_t{
 			.val = std::accumulate(
 				std::next(args.begin()), args.end(), args.begin()->val,
@@ -397,7 +395,7 @@ std::optional<token_t> Interpreter::default_functions(
 				}),
 			.type = TOKEN_TYPE::INT,
 		};
-	else if (func.pname == L"/")
+	else if (*func.pname == L"/")
 		return token_t{
 			.val = std::accumulate(
 				std::next(args.begin()), args.end(), args.begin()->val,
@@ -416,7 +414,7 @@ std::optional<token_t> Interpreter::default_functions(
 				}),
 			.type = TOKEN_TYPE::INT,
 		};
-	else if (func.pname == L"=")
+	else if (*func.pname == L"=")
 	{
 		if (args.size() < 2)
 		{
@@ -436,7 +434,7 @@ std::optional<token_t> Interpreter::default_functions(
 			.type = TOKEN_TYPE::BOOL,
 		};
 	}
-	else if (func.pname == L">")
+	else if (*func.pname == L">")
 	{
 		if (args.size() < 2)
 		{
@@ -466,7 +464,7 @@ std::optional<token_t> Interpreter::default_functions(
 			.type = TOKEN_TYPE::BOOL,
 		};
 	}
-	else if (func.pname == L"<")
+	else if (*func.pname == L"<")
 	{
 		if (args.size() < 2)
 		{
@@ -496,7 +494,7 @@ std::optional<token_t> Interpreter::default_functions(
 			.type = TOKEN_TYPE::BOOL,
 		};
 	}
-	else if (func.pname == L"and")
+	else if (*func.pname == L"and")
 	{
 		if (args.size() < 2)
 		{
@@ -526,7 +524,7 @@ std::optional<token_t> Interpreter::default_functions(
 			.type = TOKEN_TYPE::BOOL,
 		};
 	}
-	else if (func.pname == L"or")
+	else if (*func.pname == L"or")
 	{
 		if (args.size() < 2)
 		{
@@ -555,7 +553,7 @@ std::optional<token_t> Interpreter::default_functions(
 			.type = TOKEN_TYPE::BOOL,
 		};
 	}
-	else if (func.pname == L"not")
+	else if (*func.pname == L"not")
 	{
 		if (args.size() != 1)
 		{
@@ -585,14 +583,14 @@ std::optional<token_t> Interpreter::special_functions(
 	std::shared_ptr<env_t> env)
 {
 	assert(func.type == TOKEN_TYPE::SYMBOL);
-	if (func.pname == L"if")
+	if (*func.pname == L"if")
 	{
 		// if takes 3 arguments if test conseq alt
 		if (args.size() != 3)
 		{
 			err_.emplace_back(EvalError::Exception::INVALID_NUMBER_OF_ARGS,
 							  L"if takes 3 args", func);
-			return token_t{};
+			return {};
 		}
 
 		// get the test value and make sure its a boolean
@@ -602,72 +600,72 @@ std::optional<token_t> Interpreter::special_functions(
 		{
 			err_.emplace_back(EvalError::Exception::INVALID_ARG_TYPES,
 							  L"if takes arg types: Bool any any", token);
-			return token_t{};
+			return {};
 		}
 
 		// if test is true eval with conseq, else eval with alt
 		return eval(test.is_true ? args[1] : args[2], env);
 	}
-	else if (func.pname == L"define")
+	else if (*func.pname == L"define")
 	{
 		// define takes 2 arguments define name value
 		if (args.size() != 2)
 		{
 			err_.emplace_back(EvalError::Exception::INVALID_NUMBER_OF_ARGS,
 							  L"define takes 2 args", token);
-			return token_t{};
+			return {};
 		}
 		else if (args[0].type != TOKEN_TYPE::SYMBOL)
 		{
 			err_.emplace_back(EvalError::Exception::INVALID_ARG_TYPES,
 							  L"Define takes arg types: symbol any", token);
-			return token_t{};
+			return {};
 		}
 		// check that the symbol isn't already defined
 		else if (env_->find(args[0]).has_value())
 		{
 			err_.emplace_back(EvalError::Exception::REDEFINITION, token);
-			return token_t{};
+			return {};
 		}
 
 		token_t new_token{eval(args[1], env)};
-		new_token.pname = args[0].pname;
+
+		// Assert that the pname is both non empty, and has a value (shared ptr)
+		assert(args[0].pname);
+
 		// define it in the global environment
-		env_->curr_env_.insert(new_token);
+		env_->curr_env_.emplace(*args[0].pname, new_token);
 		return token_t{};
 	}
-	else if (func.pname == L"set!")
+	else if (*func.pname == L"set!")
 	{
 		// set! takes 2 arguments define name value
 		if (args.size() != 2)
 		{
 			err_.emplace_back(EvalError::Exception::INVALID_NUMBER_OF_ARGS,
 							  L"set! takes 2 args", token);
-			return token_t{};
+			return {};
 		}
 		else if (args[0].type != TOKEN_TYPE::SYMBOL)
 		{
 			err_.emplace_back(EvalError::Exception::INVALID_ARG_TYPES,
 							  L"set takes arg types: symbol any", token);
-			return token_t{};
+			return {};
 		}
 		// check that the symbol is already defined
 		else if (!env_->find(args[0]).has_value())
 		{
-			err_.emplace_back(EvalError::Exception::UNDEFINED, args[0]);
-			return token_t{};
+			err_.emplace_back(EvalError::Exception::UNDEFINED, args[0], env);
+			return {};
 		}
-		token_t new_token = eval(args[1], env);
-		new_token.pname = args[0].pname;
-
-		// remove the old token
-		env_->curr_env_.erase(args[0]);
-		// put in the new token
-		env_->curr_env_.insert(new_token);
+		// Assert that the pname is both non empty, and has a value (shared ptr)
+		assert(args[0].pname);
+		// replace the old token
+		env_->curr_env_[*args[0].pname] = eval(args[1], env);
 
 		return token_t{};
 	}
-	else if (func.pname == L"defun")
+	else if (*func.pname == L"defun")
 	// equivalent to (define name (lambda (args) (expr)))
 	{
 		// Lambdas only take 3 args, defun name (args) (body)
@@ -675,60 +673,99 @@ std::optional<token_t> Interpreter::special_functions(
 		{
 			err_.emplace_back(EvalError::Exception::INVALID_NUMBER_OF_ARGS,
 							  L"defun takes 3 args", token);
-			return token_t{};
+			return {};
 		}
 		else if (args[0].type != TOKEN_TYPE::SYMBOL ||
 				 args[1].type != TOKEN_TYPE::LIST ||
+				 [&args]()
+				 {
+					 for (const token_t& i : args[1].apval)
+						 if (i.type != TOKEN_TYPE::SYMBOL)
+							 return true;
+					 return false;
+				 }() ||
 				 args[2].type != TOKEN_TYPE::LIST)
 		{
 			err_.emplace_back(
 				EvalError::Exception::INVALID_ARG_TYPES,
-				L"defun takes arg types: symbol list list", token);
-			return token_t{};
+				L"defun takes arg types: symbol list(symbols) list", token);
+			return {};
 		}
 		// check that the function isn't already defined
 		else if (env_->find(args[0]).has_value())
 		{
 			err_.emplace_back(EvalError::Exception::REDEFINITION, token);
-			return token_t{};
+			return {};
 		}
 
+		std::shared_ptr<env_t> new_env{std::make_shared<env_t>(
+			env_t{.env_name_{std::format(L"{} ", env->curr_env_.size())},
+				  .curr_env_{},
+				  .next_env_{env}})};
+
+		// put the arguments into the new environment
+		for (auto i : args[1].apval)
+			new_env->curr_env_.emplace(*i.pname, i);
+
+		// make sure the pname has a value
+		assert(args[0].pname);
 		// Create the function, ap val is the argument list,
 		// expr is the body object, the environment is locked to
 		// the current environment
 		// define it in the global environment
 		env_->curr_env_.emplace(
+			*args[0].pname,
 			token_t{.type = TOKEN_TYPE::LAMBDA,
 					.pname{args[0].pname},
 					.apval{args[1].apval},
 					.expr{std::make_shared<token_t>(args[2])},
-					.env{env}});
+					.env{new_env}});
 		return token_t{};
 	}
-	else if (func.pname == L"lambda")
+	else if (*func.pname == L"lambda")
 	{
 		// Lambdas only take 2 args, lambda (args) (body)
 		if (args.size() != 2)
 		{
 			err_.emplace_back(EvalError::Exception::INVALID_NUMBER_OF_ARGS,
 							  L"lambda takes 2 args", token);
-			return token_t{};
+			return {};
 		}
 		else if (args[0].type != TOKEN_TYPE::LIST ||
+				 // Dirty lambdas
+				 [&args]()
+				 {
+					 for (const token_t& i : args[0].apval)
+						 if (i.type != TOKEN_TYPE::SYMBOL)
+							 return true;
+					 return false;
+				 }() ||
+
 				 args[1].type != TOKEN_TYPE::LIST)
 		{
-			err_.emplace_back(EvalError::Exception::INVALID_ARG_TYPES,
-							  L"lambda takes ar types: list list", token);
-			return token_t{};
+			err_.emplace_back(
+				EvalError::Exception::INVALID_ARG_TYPES,
+				L"lambda takes ar types: list(symbols) list", token);
+			return {};
 		}
+
+		std::shared_ptr<env_t> new_env{std::make_shared<env_t>(
+			env_t{.env_name_{std::format(L"{} ", env->curr_env_.size())},
+				  .curr_env_{},
+				  .next_env_{env}})};
+
+		// put the arguments into the new environment
+		for (auto i : args[0].apval)
+			new_env->curr_env_.emplace(*i.pname, i);
+
 		// Create the lambda, ap val is the argument list, expr
 		// is the body object, the environment is locked to the
 		// current environment
 		return token_t{.type = TOKEN_TYPE::LAMBDA,
 					   .apval{args[0].apval},
 					   .expr{std::make_shared<token_t>(args[1])},
-					   .env{env}};
+					   .env{new_env}};
 	}
 
-	return std::optional<token_t>{};
+	return {};
 }

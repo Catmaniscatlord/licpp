@@ -30,6 +30,7 @@ BraceWrapping:
 BreakAfterAttributes: Always
 BreakBeforeBraces: Custom
 ColumnLimit: 80
+IndentCaseLabels: false
 IndentRequiresClause: false
 IndentWidth: 4
 NamespaceIndentation: Inner

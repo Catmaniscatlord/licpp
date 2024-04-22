@@ -39,6 +39,8 @@ public:
 			return L"No input given";
 		case Exception::NONE:
 			return L"No Error";
+		default:
+			return L"This shouldn't have happened";
 		}
 	};
 };

@@ -48,6 +48,8 @@ public:
 	std::shared_ptr<token_t> expr{};
 	std::shared_ptr<env_t> env{};
 
+	operator std::wstring() const;
+
 private:
 	std::strong_ordering nested_check(const token_t &l, const token_t &r) const;
 

@@ -126,6 +126,7 @@ public:
 	}
 
 private:
+	// Default lisp functions
 	std::optional<token_t> default_functions(
 		token_t& token,
 		token_t& func,

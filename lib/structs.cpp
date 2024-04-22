@@ -2,6 +2,10 @@
 
 #include <cassert>
 #include <format>
+#include <iostream>
+#include <ranges>
+#include <sstream>
+#include <string>
 
 inline const wchar_t *TokenTypeToString(const TOKEN_TYPE &tt)
 {
@@ -39,6 +43,54 @@ token_t::nested_check(const token_t &l, const token_t &r) const
 				? (l.val <=> r.val)
 				: std::strong_ordering::less);
 }
+
+// This is so we have a string to print to the output, as opposed to the
+// ostream<< which is meant for debugging
+token_t::operator std::wstring() const
+{
+	std::wstringstream ss;
+	switch (type)
+	{
+	case TOKEN_TYPE::DELIM:
+		break;
+	case TOKEN_TYPE::LIST:
+	{
+		ss << "(";
+		for (auto &i : apval)
+		{
+			ss << static_cast<std::wstring>(i);
+			if (&i != &apval.back())
+				ss << " ";
+		}
+		ss << ")";
+	}
+	break;
+	case TOKEN_TYPE::SYMBOL:
+		ss << *pname;
+		break;
+	case TOKEN_TYPE::INT:
+		ss << val;
+		break;
+	case TOKEN_TYPE::BOOL:
+		ss << (is_true ? L"T" : L"NIL");
+		break;
+	case TOKEN_TYPE::LAMBDA:
+		ss << "(";
+		for (auto &i : apval)
+		{
+			ss << static_cast<std::wstring>(i);
+			if (&i != &apval.back())
+				ss << " ";
+		}
+		ss << ")";
+		ss << " ";
+		ss << "(";
+		ss << static_cast<std::wstring>(*expr);
+		ss << ")";
+		break;
+	}
+	return ss.str();
+};
 
 std::wostream &token_t::recursive_out(
 	std::wostream &os, const token_t &t, const std::wstring &pre)

@@ -20,6 +20,8 @@ void PrintWelcome(std::shared_ptr<ncpp::Plane> plane);
 
 int main(void)
 {
+	Interpreter *interp{Interpreter::getInstance()};
+
 	// setup basic options
 	notcurses_options opts{
 		.termtype = nullptr,
@@ -48,40 +50,58 @@ int main(void)
 
 	while (true)
 	{
-		std::wstring command = PromptInput(ncurses, command_plane);
+		std::wstring command{PromptInput(ncurses, command_plane)};
 
 		auto parse_res{ParseEvalTokens(command)};
 		if (parse_res.second.err != ParserError::Exception::NONE)
+		{
+			command_plane->set_fg_rgb(0xFF0000);
+			command_plane->putstr("PARSE ERROR: ");
+			command_plane->set_fg_default();
+			command_plane->putstr(parse_res.second.what());
+			command_plane->putstr(L"\n");
+			ncurses.render();
+			ncurses.refresh({}, {});
 			continue;
+		}
 
 		std::vector<token_t> tokens{parse_res.first};
 
-		Interpreter *interp{Interpreter::getInstance()};
-		auto res{interp->eval(tokens[0])};
-
-		std::wcerr << "\n=============\n"
-				   << "errors\n"
-				   << "=============\n";
-
-		for (auto &i : interp->get_error())
+		for (auto &i : tokens)
 		{
-			std::wcerr << i.what() << "\n" << i.get_token() << "\n";
-			if (i.err_ == EvalError::Exception::UNDEFINED)
-				std::wcerr << i.get_env();
+			interp->clear_error();
+			auto res{interp->eval(i)};
+
+			if (interp->get_error().empty())
+			{
+				/* command_plane->putstr(L"\n"); */
+				command_plane->putstr(static_cast<std::wstring>(res).c_str());
+				command_plane->putstr(L"\n");
+				ncurses.render();
+				ncurses.refresh({}, {});
+			}
+			else
+			{
+				command_plane->set_fg_rgb(0xFF0000);
+				command_plane->putstr("EVAL ERROR: ");
+				command_plane->set_fg_default();
+				auto error{interp->get_error().front()};
+				command_plane->putstr(error.what());
+				command_plane->putstr(L"\n");
+
+				command_plane->set_fg_rgb(0xAF0000);
+				command_plane->putstr("TOKEN : ");
+				command_plane->set_fg_default();
+				// This casting is really verbose and annoying, there has to be
+				// a better way to do this
+				command_plane->putstr(
+					static_cast<std::wstring>(error.get_token()).c_str());
+				command_plane->putstr(L"\n");
+				ncurses.render();
+				ncurses.refresh({}, {});
+				break;
+			}
 		}
-
-		interp->clear_error();
-
-		std::wcerr << "\n=============\n"
-				   << "results\n"
-				   << "=============\n";
-		std::wcerr << res;
-		std::wcerr << "\n=============\n";
-
-		std::wcerr << "\n=============\n"
-				   << "env\n"
-				   << "=============\n";
-		/* std::wcerr << *interp->get_env(); */
 	}
 
 	ncurses.stop();
@@ -107,6 +127,11 @@ void PrintWelcome(std::shared_ptr<ncpp::Plane> plane)
 std::wstring
 PromptInput(ncpp::NotCurses &ncurses, std::shared_ptr<ncpp::Plane> plane)
 {
+	static std::vector<std::wstring> cmd_hist{};
+
+	auto cmd_hist_pos{cmd_hist.size()};
+	bool edited{false};
+
 	uint x, y;
 	plane->get_cursor_yx(y, x);
 	const uint dimx = plane->get_dim_x();
@@ -114,6 +139,7 @@ PromptInput(ncpp::NotCurses &ncurses, std::shared_ptr<ncpp::Plane> plane)
 	const uint buf_indent = 2;
 	ncurses.cursor_enable(y, 2);
 	ncurses.render();
+	ncurses.refresh({}, {});
 	// size of "> "
 	const uint line_size = dimx - buf_indent;
 
@@ -131,8 +157,8 @@ PromptInput(ncpp::NotCurses &ncurses, std::shared_ptr<ncpp::Plane> plane)
 			return {};
 		else if (ni.id == NCKEY_ENTER)
 		{
+			cmd_hist.push_back(buf);
 			plane->putstr("\n");
-			ncurses.refresh(y, x);
 			return buf;
 		}
 		// TODO: ctrl+action, to affect over words
@@ -169,7 +195,12 @@ PromptInput(ncpp::NotCurses &ncurses, std::shared_ptr<ncpp::Plane> plane)
 		}
 		else if (ni.id == NCKEY_UP)
 		{
-			if (bpos >= line_size)
+			if (!edited && cmd_hist_pos > 0)
+			{
+				cmd_hist_pos--;
+				buf = cmd_hist[cmd_hist_pos];
+			}
+			else if (bpos >= line_size)
 			{
 				bpos -= line_size;
 				y--;
@@ -177,6 +208,11 @@ PromptInput(ncpp::NotCurses &ncurses, std::shared_ptr<ncpp::Plane> plane)
 		}
 		else if (ni.id == NCKEY_DOWN)
 		{
+			if (!edited && cmd_hist_pos < cmd_hist.size() - 1)
+			{
+				cmd_hist_pos++;
+				buf = cmd_hist[cmd_hist_pos];
+			}
 			if (bpos + line_size < buf.size())
 			{
 				bpos += line_size;
@@ -196,13 +232,14 @@ PromptInput(ncpp::NotCurses &ncurses, std::shared_ptr<ncpp::Plane> plane)
 		}
 		else
 		{
+			edited = true;
 			buf.insert(bpos, 1, ni.id);
 			bpos++;
 		}
 
 		const uint cxpos{static_cast<uint>(bpos % line_size)};
 		const uint cypos{static_cast<uint>(bpos / (line_size))};
-		ncplane_erase_region(plane->to_ncplane(), y - cypos + 1, 0, INT_MAX, 0);
+		ncplane_erase_region(plane->to_ncplane(), y - cypos, -1, INT_MAX, 0);
 		plane->printf(y - cypos, 0, "> ");
 		auto tokens = ParsePrintTokens(buf);
 
@@ -234,8 +271,6 @@ void PrintInput(std::shared_ptr<ncpp::Plane> plane,
 	for (auto &tok : input)
 	{
 		auto str{tok.pname};
-		/* std::wcerr << str; */
-		/* continue; */
 		if (str == L"(")
 		{
 			if (para_count >= 0)

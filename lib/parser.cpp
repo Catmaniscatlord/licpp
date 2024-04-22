@@ -318,5 +318,10 @@ ParseEvalTokens(std::wstring_view input)
 			}
 		}
 
+	if (!list_stack.empty())
+	{
+		err = ParserError(ParserError::Exception::UNMATCHED_PARANTHESIS,
+						  {input_pos - 1, input_pos});
+	}
 	return {tokens, err};
 }

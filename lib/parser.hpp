@@ -45,11 +45,13 @@ public:
 	};
 };
 
-// Returns a vector of tokens that is meant to be printed,
-// Does not contain lists. This is essentially token tagging
+/**
+ * @return a vector of tokens that is meant to be printed, Does not contain
+ *LISTS or LAMBDA. used for syntax highlighting
+ **/
 std::pair<std::vector<parse_token_t>, ParserError>
 ParsePrintTokens(std::wstring_view string);
 
-// Returns a list of tokens to be evaluated.
+// Returns a list of tokens for evaluating
 std::pair<std::vector<token_t>, ParserError>
 ParseEvalTokens(std::wstring_view string);

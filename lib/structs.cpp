@@ -1,8 +1,10 @@
 #include "structs.hpp"
 
 #include <cassert>
+#include <compare>
 #include <format>
 #include <iostream>
+#include <optional>
 #include <ranges>
 #include <sstream>
 #include <string>
@@ -31,17 +33,43 @@ inline const wchar_t *TokenTypeToString(const TOKEN_TYPE &tt)
 std::strong_ordering
 token_t::nested_check(const token_t &l, const token_t &r) const
 {
-	if (!l.apval.empty() || !r.apval.empty())
+	if (l.type != r.type)
+		return std::strong_ordering::less;
+	switch (l.type)
 	{
-		if (l.apval.size() != r.apval.size())
+	case TOKEN_TYPE::SYMBOL:
+	case TOKEN_TYPE::DELIM:
+		return l.pname <=> r.pname;
+	case TOKEN_TYPE::LIST:
+		if (!l.apval.empty() || !r.apval.empty())
+		{
+			if (l.apval.size() != r.apval.size())
+				return l.apval.size() <=> r.apval.size();
+			for (size_t i{0}; i < l.apval.size(); i++)
+				if (nested_check(l.apval[i], r.apval[i]) != 0)
+					return nested_check(l.apval[i], r.apval[i]);
+		}
+		return l.apval.size() <=> r.apval.size();
+	case TOKEN_TYPE::INT:
+		return l.val <=> r.val;
+	case TOKEN_TYPE::BOOL:
+		return l.is_true <=> r.is_true;
+	case TOKEN_TYPE::LAMBDA:
+		if (*l.expr == *r.expr)
+		{
+			if (!l.apval.empty() || !r.apval.empty())
+			{
+				if (l.apval.size() != r.apval.size())
+					return l.apval.size() <=> r.apval.size();
+				for (size_t i{0}; i < l.apval.size(); i++)
+					if (nested_check(l.apval[i], r.apval[i]) != 0)
+						return nested_check(l.apval[i], r.apval[i]);
+			}
 			return l.apval.size() <=> r.apval.size();
-		for (size_t i{0}; i < l.apval.size(); i++)
-			if (nested_check(l.apval[i], r.apval[i]) != 0)
-				return nested_check(l.apval[i], r.apval[i]);
+		}
+		return (*l.expr <=> *r.expr);
 	}
-	return (l.is_true == r.is_true && l.type == r.type && l.pname == r.pname
-				? (l.val <=> r.val)
-				: std::strong_ordering::less);
+	return std::strong_ordering::less;
 }
 
 // This is so we have a string to print to the output, as opposed to the
@@ -49,20 +77,21 @@ token_t::nested_check(const token_t &l, const token_t &r) const
 token_t::operator std::wstring() const
 {
 	std::wstringstream ss;
+	ss << (quoted ? L"'" : L"");
 	switch (type)
 	{
 	case TOKEN_TYPE::DELIM:
 		break;
 	case TOKEN_TYPE::LIST:
 	{
-		ss << "(";
+		ss << L"(";
 		for (auto &i : apval)
 		{
 			ss << static_cast<std::wstring>(i);
 			if (&i != &apval.back())
-				ss << " ";
+				ss << L" ";
 		}
-		ss << ")";
+		ss << L")";
 	}
 	break;
 	case TOKEN_TYPE::SYMBOL:
@@ -75,18 +104,16 @@ token_t::operator std::wstring() const
 		ss << (is_true ? L"T" : L"NIL");
 		break;
 	case TOKEN_TYPE::LAMBDA:
-		ss << "(";
+		ss << L"(";
 		for (auto &i : apval)
 		{
 			ss << static_cast<std::wstring>(i);
 			if (&i != &apval.back())
-				ss << " ";
+				ss << L" ";
 		}
-		ss << ")";
-		ss << " ";
-		ss << "(";
+		ss << L")";
+		ss << L" ";
 		ss << static_cast<std::wstring>(*expr);
-		ss << ")";
 		break;
 	}
 	return ss.str();
@@ -96,8 +123,9 @@ std::wostream &token_t::recursive_out(
 	std::wostream &os, const token_t &t, const std::wstring &pre)
 {
 	assert(t != token_t{});
-	os << std::format(L"{}type: {:>6.6s}, quoted: {:5}, pname: {} ", pre,
-					  TokenTypeToString(t.type), t.quoted, *t.pname);
+	os << std::format(
+		L"{}type: {:>6.6s}, quoted: {:5}, pname: {} ", pre,
+		TokenTypeToString(t.type), t.quoted, (t.pname ? *t.pname : L""));
 	switch (t.type)
 	{
 	case TOKEN_TYPE::DELIM:

@@ -21,16 +21,23 @@ public:
 		DIVIDE_BY_ZERO,
 		EVAL_EMPTY_LIST,
 		MATH_ERR,
+		QUIT,
 		NONE,
 	};
 
 	Exception err_{Exception::NONE};
+	// The offending token
 	token_t token_;
+	// The environment where the error happend
 	std::shared_ptr<env_t> env_;
+	// Default error message for generic errors like INVALID_NUMBER_OF_ARGS and
+	// INVALID_ARG_TYPES,
 	const std::wstring err_msg_;
 
 	EvalError() = default;
 
+	// There are a ton of different ways to constuct an evaluation error, they
+	// are all listed here
 	EvalError(Exception e, token_t token)
 		: err_{e}, token_{token}, err_msg_{L""} {};
 
@@ -60,6 +67,8 @@ public:
 	{
 		switch (err_)
 		{
+		case Exception::QUIT:
+			return L"EXITING";
 		case Exception::NONE:
 			return L"No Error";
 		case Exception::OVERFLOW:
@@ -95,12 +104,15 @@ private:
 	// so we share the err member across the whole class.
 	// if there is an error the user has to explicitly ask for its value
 	static std::vector<EvalError> err_;
+
+	// The global environment
 	static std::shared_ptr<env_t> env_;
 	static Interpreter* pinstance_;
 	static std::mutex mutex_;
 
 protected:
 	Interpreter(){};
+	~Interpreter(){};
 
 public:
 	Interpreter(Interpreter& other) = delete;
@@ -108,13 +120,19 @@ public:
 
 	static Interpreter* getInstance();
 
-	token_t eval(token_t& token, std::shared_ptr<env_t> env = env_);
+	// evaluates the given token
+	/**
+	 * @brief evaluates the given token in the supplied envrionment
+	 * environment is defaulted to the global environment
+	 **/
+	token_t eval(const token_t& token, std::shared_ptr<env_t> env = env_);
 
 	std::vector<EvalError> get_error()
 	{
 		return err_;
 	};
 
+	// Clears the errors in our interpreter
 	void clear_error()
 	{
 		err_.clear();
@@ -126,16 +144,33 @@ public:
 	}
 
 private:
-	// Default lisp functions
+	/**
+	 * @brief a collection of default (non-user) functions, this calls special
+	 *functions first
+	 * @param token the list token that called this function
+	 * @param func The first symbol in the list, the funciton that gets
+	 *evaluated
+	 * @param args the rest of the variables for the function
+	 * @param env the current environment the function is to be evaluated in
+	 **/
 	std::optional<token_t> default_functions(
-		token_t& token,
-		token_t& func,
-		std::span<token_t> args,
+		const token_t& token,
+		const token_t& func,
+		const std::span<const token_t> args,
 		std::shared_ptr<env_t> env);
 
+	/**
+	 * @brief performs special functions, i.e if, funcall, lambda, define
+	 *etc
+	 * @param token the list token that called this function
+	 * @param func The first symbol in the list, the funciton that gets
+	 *evaluated
+	 * @param args the rest of the variables for the function
+	 * @param env the current environment the function is to be evaluated in
+	 **/
 	std::optional<token_t> special_functions(
-		token_t& token,
-		token_t& func,
-		std::span<token_t> args,
+		const token_t& token,
+		const token_t& func,
+		std::span<const token_t> args,
 		std::shared_ptr<env_t> env);
 };

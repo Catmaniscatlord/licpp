@@ -12,6 +12,7 @@
 std::pair<std::vector<parse_token_t>, ParserError>
 ParsePrintTokens(std::wstring_view input)
 {
+	using namespace std::string_view_literals;
 	// Used to keep track where in the input we are
 	// so we can throw errors reasonable error messages on parsing
 	uint input_pos{};
@@ -97,6 +98,7 @@ ParsePrintTokens(std::wstring_view input)
 				if (i == input.npos)
 				{
 					// No more delimiting characters found
+					// copy the rest of the input
 					str = input;
 					input.remove_prefix(input.size());
 					input_pos = input.size() - 1;
@@ -296,8 +298,11 @@ ParseEvalTokens(std::wstring_view input)
 				}
 				try
 				{
+					// integer conversion is actual bullshit.
 					size_t pos{};
+					// stoi throws!
 					int x{std::stoi(std::wstring{str}, &pos)};
+					// and so do we >:)
 					if (pos != str.size())
 						throw;
 					tokens.emplace_back(

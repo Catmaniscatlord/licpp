@@ -38,7 +38,9 @@ public:
 	bool quoted{false};
 	bool is_true{false};
 	TOKEN_TYPE type;
-	std::shared_ptr<std::wstring> pname{std::make_shared<std::wstring>(L"")};
+	/* std::shared_ptr<std::wstring> pname{std::make_shared<std::wstring>(L"")};
+	 */
+	std::shared_ptr<std::wstring> pname{};
 
 	// stores a list if its a list, if its a lambda or a function, this stores
 	// the args
@@ -54,13 +56,16 @@ private:
 	std::strong_ordering nested_check(const token_t &l, const token_t &r) const;
 
 public:
-	bool operator==(const token_t &other) const = default;
-
 	// space ship operator nyooom nyooom
 	auto operator<=>(const token_t &other) const
 	{
 		return nested_check(*this, other);
 	};
+
+	bool operator==(const token_t &other) const
+	{
+		return (*this <=> other) == 0;
+	}
 
 	friend std::wostream &operator<<(std::wostream &os, const token_t &t)
 	{

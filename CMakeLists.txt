@@ -6,12 +6,11 @@
 # authors: Chamberlain, David
 #
 
-cmake_minimum_required(VERSION 3.28)
+cmake_minimum_required(VERSION 3.22)
 include(FetchContent)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
 # to fix clang errors
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -20,15 +19,6 @@ project(LispInterpeter)
 # ##############################################################################
 # FETCH PACKAGES #
 # ##############################################################################
-
-set(BOOST_INCLUDE_LIBRARIES program_options unordered)
-set(BOOST_ENABLE_CMAKE ON)
-FetchContent_Declare(
-  Boost
-  URL https://github.com/boostorg/boost/releases/download/boost-1.84.0/boost-1.84.0.tar.gz
-      USES_TERMINAL_DOWNLOAD
-      TRUE
-  DOWNLOAD_NO_EXTRACT FALSE)
 
 FetchContent_Declare(
   googletest
@@ -41,13 +31,16 @@ FetchContent_Declare(
   URL https://github.com/dankamongmen/notcurses/archive/refs/tags/v3.0.9.tar.gz
       USES_TERMINAL_DOWNLOAD TRUE
   DOWNLOAD_NO_EXTRACT FALSE)
+
+set(USE_DEFLATE OFF)
 set(USE_DOCTEST OFF)
 set(USE_POC OFF)
 set(USE_PANDOC OFF)
+set(USE_MULTIMEDIA none)
 set(USE_EXECUTABLES OFF)
 
 set(USE_CXX ON)
-FetchContent_MakeAvailable(notcurses Boost googletest)
+FetchContent_MakeAvailable(notcurses googletest)
 
 # ##############################################################################
 # Project Wide Options #

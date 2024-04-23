@@ -125,25 +125,29 @@ ParsePrintTokens(std::wstring_view input)
 													  .type = TOKEN_TYPE::BOOL,
 													  .pname = str});
 				}
-				try
+				else
 				{
-					size_t pos{};
-					std::stoi(std::wstring{str}, &pos);
-					if (pos != str.size())
-						throw;
-					tokens.emplace_back(parse_token_t{.quoted = quoted,
-													  .type = TOKEN_TYPE::INT,
-													  .pname = str});
+					try
+					{
+						size_t pos{};
+						std::stoi(std::wstring{str}, &pos);
+						if (pos != str.size())
+							throw;
+						tokens.emplace_back(
+							parse_token_t{.quoted = quoted,
+										  .type = TOKEN_TYPE::INT,
+										  .pname = str});
+					}
+					catch (...)
+					{
+						// TODO: tell the user when its an overflow
+						//  not convertable to an integer
+						tokens.emplace_back(
+							parse_token_t{.quoted = quoted,
+										  .type = TOKEN_TYPE::SYMBOL,
+										  .pname = str});
+					}
 				}
-				catch (...)
-				{
-					// TODO: tell the user when its an overflow
-					//  not convertable to an integer
-					tokens.emplace_back(
-						parse_token_t{.quoted = quoted,
-									  .type = TOKEN_TYPE::SYMBOL,
-									  .pname = str});
-				};
 			}
 		}
 
@@ -296,30 +300,33 @@ ParseEvalTokens(std::wstring_view input)
 								.type = TOKEN_TYPE::BOOL,
 								.pname{std::make_shared<std::wstring>(str)}});
 				}
-				try
+				else
 				{
-					// integer conversion is actual bullshit.
-					size_t pos{};
-					// stoi throws!
-					int x{std::stoi(std::wstring{str}, &pos)};
-					// and so do we >:)
-					if (pos != str.size())
-						throw;
-					tokens.emplace_back(
-						token_t{.val = x,
-								.quoted = quoted,
-								.type = TOKEN_TYPE::INT,
-								.pname{std::make_shared<std::wstring>(str)}});
+					try
+					{
+						// integer conversion is actual bullshit.
+						size_t pos{};
+						// stoi throws!
+						int x{std::stoi(std::wstring{str}, &pos)};
+						// and so do we >:)
+						if (pos != str.size())
+							throw;
+						tokens.emplace_back(token_t{
+							.val = x,
+							.quoted = quoted,
+							.type = TOKEN_TYPE::INT,
+							.pname{std::make_shared<std::wstring>(str)}});
+					}
+					catch (...)
+					{
+						// TODO: tell the user when its an overflow
+						//  not convertable to an integer
+						tokens.emplace_back(token_t{
+							.quoted = quoted,
+							.type = TOKEN_TYPE::SYMBOL,
+							.pname{std::make_shared<std::wstring>(str)}});
+					}
 				}
-				catch (...)
-				{
-					// TODO: tell the user when its an overflow
-					//  not convertable to an integer
-					tokens.emplace_back(
-						token_t{.quoted = quoted,
-								.type = TOKEN_TYPE::SYMBOL,
-								.pname{std::make_shared<std::wstring>(str)}});
-				};
 			}
 		}
 

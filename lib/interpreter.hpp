@@ -125,7 +125,7 @@ public:
 	 * @brief evaluates the given token in the supplied envrionment
 	 * environment is defaulted to the global environment
 	 **/
-	token_t eval(const token_t& token, std::shared_ptr<env_t> env = env_);
+	token_t eval(const token_t& token, std::weak_ptr<env_t> env = env_);
 
 	std::vector<EvalError> get_error()
 	{
@@ -157,7 +157,7 @@ private:
 		const token_t& token,
 		const token_t& func,
 		const std::span<const token_t> args,
-		std::shared_ptr<env_t> env);
+		std::weak_ptr<env_t> env);
 
 	/**
 	 * @brief performs special functions, i.e if, funcall, lambda, define
@@ -172,5 +172,5 @@ private:
 		const token_t& token,
 		const token_t& func,
 		std::span<const token_t> args,
-		std::shared_ptr<env_t> env);
+		std::weak_ptr<env_t> env);
 };

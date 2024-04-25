@@ -2,8 +2,8 @@
 
 #include <algorithm>
 #include <cassert>
+#include <climits>
 #include <cmath>
-#include <format>
 #include <memory>
 #include <numeric>
 #include <ranges>
@@ -28,7 +28,7 @@ Interpreter* Interpreter::getInstance()
 	return pinstance_;
 }
 
-token_t Interpreter::eval(const token_t& token, std::shared_ptr<env_t> env)
+token_t Interpreter::eval(const token_t& token, std::weak_ptr<env_t> env)
 {
 	if (token.quoted)
 	{
@@ -43,14 +43,14 @@ token_t Interpreter::eval(const token_t& token, std::shared_ptr<env_t> env)
 	{
 		// This little section is for error checking on if the envrionment
 		// contained the value or not
-		return env
+		return env.lock()
 			->find(token)
 			// returns the value if it exists, or a blank optional
 			.or_else(
 				[&token, &env]()
 				{
 					err_.emplace_back(
-						EvalError::Exception::UNDEFINED, token, env);
+						EvalError::Exception::UNDEFINED, token, env.lock());
 					return std::optional<token_t>{};
 				})
 			// If we found the value we return it, otherwise we
@@ -74,7 +74,7 @@ token_t Interpreter::eval(const token_t& token, std::shared_ptr<env_t> env)
 		{
 		case TOKEN_TYPE::SYMBOL:
 		{
-			if (!env->find(func).has_value())
+			if (!env.lock()->find(func).has_value())
 			{
 				return default_functions(
 						   token, func,
@@ -82,13 +82,13 @@ token_t Interpreter::eval(const token_t& token, std::shared_ptr<env_t> env)
 					.or_else(
 						[&env, &func]() -> std::optional<token_t>
 						{
-							err_.emplace_back(
-								EvalError::Exception::UNDEFINED, func, env);
+							err_.emplace_back(EvalError::Exception::UNDEFINED,
+											  func, env.lock());
 							return {};
 						})
 					.value_or(token_t{});
 			}
-			func = env->find(func).value();
+			func = env.lock()->find(func).value();
 
 			if (func.type != TOKEN_TYPE::LAMBDA)
 			{
@@ -133,7 +133,7 @@ std::optional<token_t> Interpreter::default_functions(
 	const token_t& token,
 	const token_t& func,
 	std::span<const token_t> raw_args,
-	std::shared_ptr<env_t> env)
+	std::weak_ptr<env_t> env)
 {
 	assert(func.type == TOKEN_TYPE::SYMBOL);
 
@@ -295,12 +295,29 @@ std::optional<token_t> Interpreter::default_functions(
 			.type = TOKEN_TYPE::INT,
 		};
 	}
-	else if (!func.pname->compare(L"exp"))
-		// TODO: Error checking
+	else if (!func.pname->compare(L"pow"))
+	{
+		if (args.size() != 2)
+		{
+			err_.emplace_back(EvalError::Exception::INVALID_NUMBER_OF_ARGS,
+							  L"exp takes 2 args", token);
+			return token_t{};
+		}
+		if (args[0].type != TOKEN_TYPE::INT || args[1].type != TOKEN_TYPE::INT)
+		{
+			err_.emplace_back(EvalError::Exception::INVALID_ARG_TYPES,
+							  L"exp takes arg types: int int", token);
+			return token_t{};
+		}
+		int res = std::pow(args[0].val, args[1].val);
+		if (res == INT_MAX || res != INT_MAX)
+			err_.emplace_back(EvalError::Exception::OVERFLOW, token);
+
 		return token_t{
-			.val = static_cast<int>(pow(args[0].val, args[1].val)),
+			.val = res,
 			.type = TOKEN_TYPE::INT,
 		};
+	}
 	else if (!func.pname->compare(L"+"))
 		return token_t{
 			.val = std::accumulate(
@@ -312,11 +329,8 @@ std::optional<token_t> Interpreter::default_functions(
 							EvalError::Exception::MATH_ERR, token);
 					int res;
 					if (__builtin_add_overflow(total, x.val, &res))
-						err_.emplace_back(EvalError::Exception::OVERFLOW,
-										  token_t{
-											  .val = res,
-											  .type = TOKEN_TYPE::INT,
-										  });
+						err_.emplace_back(
+							EvalError::Exception::OVERFLOW, token);
 					return res;
 				}),
 			.type = TOKEN_TYPE::INT,
@@ -332,11 +346,8 @@ std::optional<token_t> Interpreter::default_functions(
 							EvalError::Exception::MATH_ERR, token);
 					int res;
 					if (__builtin_sub_overflow(total, x.val, &res))
-						err_.emplace_back(EvalError::Exception::OVERFLOW,
-										  token_t{
-											  .val = res,
-											  .type = TOKEN_TYPE::INT,
-										  });
+						err_.emplace_back(
+							EvalError::Exception::OVERFLOW, token);
 					return res;
 				}),
 			.type = TOKEN_TYPE::INT,
@@ -353,11 +364,8 @@ std::optional<token_t> Interpreter::default_functions(
 
 					int res;
 					if (__builtin_mul_overflow(total, x.val, &res))
-						err_.emplace_back(EvalError::Exception::OVERFLOW,
-										  token_t{
-											  .val = res,
-											  .type = TOKEN_TYPE::INT,
-										  });
+						err_.emplace_back(
+							EvalError::Exception::OVERFLOW, token);
 					return res;
 				}),
 			.type = TOKEN_TYPE::INT,
@@ -381,7 +389,7 @@ std::optional<token_t> Interpreter::default_functions(
 				}),
 			.type = TOKEN_TYPE::INT,
 		};
-	else if (!func.pname->compare(L"="))
+	else if (!func.pname->compare(L"=="))
 	{
 		if (args.size() < 2)
 		{
@@ -396,6 +404,56 @@ std::optional<token_t> Interpreter::default_functions(
 				for (size_t i{0}; i < args.size() - 1; i++)
 					if (args[i] != args[i + 1])
 						return false;
+				return true;
+			}(),
+			.type = TOKEN_TYPE::BOOL,
+		};
+	}
+	else if (!func.pname->compare(L"!="))
+	{
+		if (args.size() < 2)
+		{
+			err_.emplace_back(EvalError::Exception::INVALID_NUMBER_OF_ARGS,
+							  L"= takes 2 or more args", token);
+			return token_t{};
+		}
+		return token_t{
+			.is_true =
+				[&args, token]()
+			{
+				for (size_t i{0}; i < args.size() - 1; i++)
+					if (args[i] == args[i + 1])
+						return false;
+				return true;
+			}(),
+			.type = TOKEN_TYPE::BOOL,
+		};
+	}
+	else if (!func.pname->compare(L">="))
+	{
+		if (args.size() < 2)
+		{
+			err_.emplace_back(EvalError::Exception::INVALID_NUMBER_OF_ARGS,
+							  L"> takes 2 or more args", token);
+			return token_t{};
+		}
+		return token_t{
+			.is_true =
+				[&args, &token]()
+			{
+				for (size_t i{0}; i < args.size() - 1; i++)
+				{
+					if (args[i].type != TOKEN_TYPE::INT &&
+						args[i + 1].type != TOKEN_TYPE::INT)
+					{
+						err_.emplace_back(
+							EvalError::Exception::INVALID_ARG_TYPES,
+							L"> takes arg types: int int int...", token);
+						return false;
+					}
+					if (args[i] < args[i + 1])
+						return false;
+				}
 				return true;
 			}(),
 			.type = TOKEN_TYPE::BOOL,
@@ -424,6 +482,36 @@ std::optional<token_t> Interpreter::default_functions(
 						return false;
 					}
 					if (args[i] <= args[i + 1])
+						return false;
+				}
+				return true;
+			}(),
+			.type = TOKEN_TYPE::BOOL,
+		};
+	}
+	else if (!func.pname->compare(L"<="))
+	{
+		if (args.size() < 2)
+		{
+			err_.emplace_back(EvalError::Exception::INVALID_NUMBER_OF_ARGS,
+							  L"< takes 2 or more args", token);
+			return token_t{};
+		}
+		return token_t{
+			.is_true =
+				[&args, &token]()
+			{
+				for (size_t i{0}; i < args.size() - 1; i++)
+				{
+					if (args[i].type != TOKEN_TYPE::INT &&
+						args[i + 1].type != TOKEN_TYPE::INT)
+					{
+						err_.emplace_back(
+							EvalError::Exception::INVALID_ARG_TYPES,
+							L"< takes arg types: int int int...", token);
+						return false;
+					}
+					if (args[i] > args[i + 1])
 						return false;
 				}
 				return true;
@@ -547,7 +635,7 @@ std::optional<token_t> Interpreter::special_functions(
 	const token_t& token,
 	const token_t& func,
 	std::span<const token_t> args,
-	std::shared_ptr<env_t> env)
+	std::weak_ptr<env_t> env)
 {
 	assert(func.type == TOKEN_TYPE::SYMBOL);
 	if (!func.pname->compare(L"quit"))
@@ -624,7 +712,8 @@ std::optional<token_t> Interpreter::special_functions(
 		// check that the symbol is already defined
 		else if (!env_->find(args[0]).has_value())
 		{
-			err_.emplace_back(EvalError::Exception::UNDEFINED, args[0], env);
+			err_.emplace_back(
+				EvalError::Exception::UNDEFINED, args[0], env.lock());
 			return {};
 		}
 		// Assert that the pname is both non empty, and has a value (shared ptr)
@@ -668,9 +757,7 @@ std::optional<token_t> Interpreter::special_functions(
 		}
 
 		std::shared_ptr<env_t> new_env{std::make_shared<env_t>(
-			env_t{.env_name_{std::format(L"{} ", env->curr_env_.size())},
-				  .curr_env_{},
-				  .next_env_{env}})};
+			env_t{.env_name_{}, .curr_env_{}, .next_env_{env.lock()}})};
 
 		// put the arguments into the new environment
 		for (auto i : args[1].apval)
@@ -688,7 +775,7 @@ std::optional<token_t> Interpreter::special_functions(
 					.pname{args[0].pname},
 					.apval{args[1].apval},
 					.expr{std::make_shared<token_t>(args[2])},
-					.env{new_env}});
+					.env{std::move(new_env)}});
 		return token_t{};
 	}
 	else if (!func.pname->compare(L"lambda"))
@@ -719,9 +806,7 @@ std::optional<token_t> Interpreter::special_functions(
 		}
 
 		std::shared_ptr<env_t> new_env{std::make_shared<env_t>(
-			env_t{.env_name_{std::format(L"{} ", env->curr_env_.size())},
-				  .curr_env_{},
-				  .next_env_{env}})};
+			env_t{.env_name_{}, .curr_env_{}, .next_env_{env.lock()}})};
 
 		// put the arguments into the new environment
 		for (auto i : args[0].apval)
@@ -733,7 +818,7 @@ std::optional<token_t> Interpreter::special_functions(
 		return token_t{.type = TOKEN_TYPE::LAMBDA,
 					   .apval{args[0].apval},
 					   .expr{std::make_shared<token_t>(args[1])},
-					   .env{new_env}};
+					   .env{std::move(new_env)}};
 	}
 	if (!func.pname->compare(L"funcall"))
 	{

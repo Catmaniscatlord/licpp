@@ -196,7 +196,7 @@ PromptInput(ncpp::NotCurses &ncurses, std::shared_ptr<ncpp::Plane> plane)
 	const uint line_size = dimx - buf_indent;
 
 	std::wstring buf;
-	size_t bpos = 0;  // cursor position in the buffer
+	size_t bpos{0};	 // cursor position in the buffer
 	ncinput ni;
 
 	// While user is inputting characters
@@ -221,12 +221,16 @@ PromptInput(ncpp::NotCurses &ncurses, std::shared_ptr<ncpp::Plane> plane)
 				buf.erase(bpos - 1, 1);
 				bpos--;
 			}
+			if (buf.empty())
+				edited = false;
 		}
 		// crtl u deletes all input before the cursor
 		else if (ni.id == 'U' && ncinput_ctrl_p(&ni))
 		{
 			buf.erase(0, bpos);
 			bpos = 0;
+			if (buf.empty())
+				edited = false;
 		}
 		else if (ni.id == NCKEY_LEFT)
 		{
@@ -253,6 +257,7 @@ PromptInput(ncpp::NotCurses &ncurses, std::shared_ptr<ncpp::Plane> plane)
 			{
 				cmd_hist_pos--;
 				buf = cmd_hist[cmd_hist_pos];
+				bpos = buf.size() - 1;
 			}
 			// prompt navigation
 			else if (bpos >= line_size)
@@ -264,10 +269,19 @@ PromptInput(ncpp::NotCurses &ncurses, std::shared_ptr<ncpp::Plane> plane)
 		else if (ni.id == NCKEY_DOWN)
 		{
 			// command history navigation
-			if (!edited && cmd_hist_pos < cmd_hist.size() - 1)
+			if (!edited && cmd_hist_pos < cmd_hist.size())
 			{
 				cmd_hist_pos++;
-				buf = cmd_hist[cmd_hist_pos];
+				if (cmd_hist_pos == cmd_hist.size())
+				{
+					buf.erase();
+					bpos = 0;
+				}
+				else
+				{
+					buf = cmd_hist[cmd_hist_pos];
+					bpos = buf.size() - 1;
+				}
 			}
 			// prompt navigation
 			if (bpos + line_size < buf.size())

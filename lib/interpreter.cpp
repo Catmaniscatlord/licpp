@@ -143,9 +143,10 @@ std::optional<token_t> Interpreter::default_functions(
 		return ret.value();
 
 	// for the rest of these the args are evaluated
-	auto argsv = std::ranges::views::transform(
-		raw_args,
-		[this, env](const token_t& t) -> token_t { return eval(t, env); });
+	auto argsv =
+		raw_args |
+		std::ranges::views::transform(
+			[this, env](const token_t& t) -> token_t { return eval(t, env); });
 	std::vector<token_t> args{argsv.begin(), argsv.end()};
 
 	if (!func.pname->compare(L"print"))
